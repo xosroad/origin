@@ -16,6 +16,7 @@ import (
 	_ "github.com/openshift/origin/pkg/project/admission/nodeenv"
 	_ "github.com/openshift/origin/pkg/project/admission/requestlimit"
 	_ "github.com/openshift/origin/pkg/quota/admission/clusterresourceoverride"
+	_ "github.com/openshift/origin/pkg/quota/admission/clusterresourcequota"
 	_ "github.com/openshift/origin/pkg/quota/admission/resourcequota"
 	_ "github.com/openshift/origin/pkg/quota/admission/runonceduration"
 	_ "github.com/openshift/origin/pkg/scheduler/admission/podnodeconstraints"
@@ -26,6 +27,7 @@ import (
 	_ "k8s.io/kubernetes/plugin/pkg/admission/limitranger"
 	_ "k8s.io/kubernetes/plugin/pkg/admission/namespace/exists"
 	_ "k8s.io/kubernetes/plugin/pkg/admission/namespace/lifecycle"
+	_ "k8s.io/kubernetes/plugin/pkg/admission/persistentvolume/label"
 	_ "k8s.io/kubernetes/plugin/pkg/admission/resourcequota"
 	_ "k8s.io/kubernetes/plugin/pkg/admission/serviceaccount"
 
@@ -39,6 +41,7 @@ var (
 
 func init() {
 	defaultOffPlugins.Insert("AlwaysPullImages")
+	defaultOnPlugins.Insert("ClusterResourceQuota")
 	admission.PluginEnabledFn = IsAdmissionPluginActivated
 }
 

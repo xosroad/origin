@@ -9,12 +9,16 @@
 #   clean: Clean up.
 
 OUT_DIR = _output
-OUT_PKG_DIR = Godeps/_workspace/pkg
 OS_OUTPUT_GOPATH ?= 1
 
 export GOFLAGS
 export TESTFLAGS
+# If set to 1, create an isolated GOPATH inside _output using symlinks to avoid
+# other packages being accidentally included. Defaults to on.
 export OS_OUTPUT_GOPATH
+# May be used to set additional arguments passed to the image build commands for
+# mounting secrets specific to a build environment.
+export OS_BUILD_IMAGE_ARGS
 
 # Build code.
 #
@@ -30,8 +34,17 @@ export OS_OUTPUT_GOPATH
 #   make all
 #   make all WHAT=cmd/oc GOFLAGS=-v
 all build:
-	hack/build-go.sh $(WHAT)
+	hack/build-go.sh $(WHAT) $(GOFLAGS)
 .PHONY: all build
+
+# Build the test binaries.
+#
+# Example:
+#   make build-tests
+build-tests:
+	hack/build-go.sh test/extended/extended.test
+	hack/build-go.sh test/integration/integration.test -tags='integration docker'
+.PHONY: build-tests
 
 # Run core verification and all self contained tests.
 #
@@ -47,7 +60,7 @@ check: | build verify
 # Example:
 #   make verify
 verify: build
-	hack/build-go.sh test/extended/extended.test test/extended/networking/extended.test test/integration/integration.test -tags='integration docker'
+	# build-tests is disabled until we can determine why memory usage is so high
 	hack/verify-upstream-commits.sh
 	hack/verify-gofmt.sh
 	hack/verify-govet.sh
@@ -111,19 +124,24 @@ test-cmd: build
 # Run end to end tests. Uses whatever binaries are currently built.
 #
 # Example:
-#   make test-cmd
+#   make test-end-to-end
 test-end-to-end: build
+	hack/env hack/verify-generated-protobuf.sh # Test the protobuf serializations when we know Docker is available
 	hack/test-end-to-end.sh
 .PHONY: test-end-to-end
 
 # Run tools tests.
 #
 # Example:
-#   make test-cmd
+#   make test-tools
 test-tools:
 	hack/test-tools.sh
 .PHONY: test-tools
 
+# Run assets tests.
+#
+# Example:
+#   make test-assets  
 test-assets:
 ifeq ($(TEST_ASSETS),true)
 	hack/test-assets.sh
@@ -154,7 +172,7 @@ run: build
 # Example:
 #   make clean
 clean:
-	rm -rf $(OUT_DIR) $(OUT_PKG_DIR)
+	rm -rf $(OUT_DIR)
 .PHONY: clean
 
 # Build an official release of OpenShift, including the official images.

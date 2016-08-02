@@ -33,7 +33,7 @@ func (factory *NamespaceControllerFactory) Create() controller.RunnableControlle
 			return factory.KubeClient.Namespaces().Watch(options)
 		},
 	}
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(namespaceLW, &kapi.Namespace{}, queue, 1*time.Minute).Run()
 
 	namespaceController := &NamespaceController{
@@ -42,9 +42,9 @@ func (factory *NamespaceControllerFactory) Create() controller.RunnableControlle
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			func(obj interface{}, err error, retries controller.Retry) bool {
 				utilruntime.HandleError(err)

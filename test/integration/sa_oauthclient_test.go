@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -20,6 +18,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/restclient"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 	"k8s.io/kubernetes/pkg/util/wait"
 
@@ -34,6 +33,7 @@ import (
 
 func TestSAAsOAuthClient(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -75,24 +75,21 @@ func TestSAAsOAuthClient(t *testing.T) {
 	}
 
 	// get the SA ready with redirect URIs and secret annotations
-	defaultSA, err := clusterAdminKubeClient.ServiceAccounts(projectName).Get("default")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	var defaultSA *kapi.ServiceAccount
 
 	// retry this a couple times.  We seem to be flaking on update conflicts and missing secrets all together
-	err = wait.PollImmediate(30*time.Millisecond, 10*time.Second, func() (done bool, err error) {
+	err = kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+		defaultSA, err = clusterAdminKubeClient.ServiceAccounts(projectName).Get("default")
+		if err != nil {
+			return err
+		}
 		if defaultSA.Annotations == nil {
 			defaultSA.Annotations = map[string]string{}
 		}
 		defaultSA.Annotations[saoauth.OAuthRedirectURISecretAnnotationPrefix+"one"] = oauthServer.URL
 		defaultSA.Annotations[saoauth.OAuthWantChallengesAnnotationPrefix] = "true"
 		defaultSA, err = clusterAdminKubeClient.ServiceAccounts(projectName).Update(defaultSA)
-		if err != nil {
-			t.Logf("unexpected err: %v", err)
-			return false, nil
-		}
-		return true, nil
+		return err
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

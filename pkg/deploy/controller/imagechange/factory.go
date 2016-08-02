@@ -33,7 +33,7 @@ func (factory *ImageChangeControllerFactory) Create() controller.RunnableControl
 			return factory.Client.ImageStreams(kapi.NamespaceAll).Watch(options)
 		},
 	}
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(imageStreamLW, &imageapi.ImageStream{}, queue, 2*time.Minute).Run()
 
 	deploymentConfigLW := &cache.ListWatch{
@@ -60,16 +60,16 @@ func (factory *ImageChangeControllerFactory) Create() controller.RunnableControl
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			func(obj interface{}, err error, retries controller.Retry) bool {
 				utilruntime.HandleError(err)
 				if _, isFatal := err.(fatalError); isFatal {
 					return false
 				}
-				if retries.Count > 0 {
+				if retries.Count > 2 {
 					return false
 				}
 				return true

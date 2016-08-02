@@ -11,7 +11,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	rcutils "k8s.io/kubernetes/pkg/controller/replication"
 	kctl "k8s.io/kubernetes/pkg/kubectl"
@@ -82,10 +82,6 @@ func (d *DeploymentConfigDescriber) Describe(namespace, name string, settings kc
 
 		printDeploymentConfigSpec(d.kubeClient, *deploymentConfig, out)
 		fmt.Fprintln(out)
-
-		if deploymentConfig.Status.Details != nil && len(deploymentConfig.Status.Details.Message) > 0 {
-			fmt.Fprintf(out, "Warning:\t%s\n", deploymentConfig.Status.Details.Message)
-		}
 
 		deploymentName := deployutil.LatestDeploymentNameForConfig(deploymentConfig)
 		deployment, err := d.kubeClient.ReplicationControllers(namespace).Get(deploymentName)
@@ -255,6 +251,10 @@ func printDeploymentConfigSpec(kc kclient.Interface, dc deployapi.DeploymentConf
 	formatString(w, "Strategy", spec.Strategy.Type)
 	printStrategy(spec.Strategy, "  ", w)
 
+	if dc.Spec.MinReadySeconds > 0 {
+		formatString(w, "MinReadySeconds", fmt.Sprintf("%d", spec.MinReadySeconds))
+	}
+
 	// Pod template
 	fmt.Fprintf(w, "Template:\n")
 	kctl.DescribePodTemplate(spec.Template, w)
@@ -264,22 +264,22 @@ func printDeploymentConfigSpec(kc kclient.Interface, dc deployapi.DeploymentConf
 
 // TODO: Move this upstream
 func printAutoscalingInfo(res unversioned.GroupResource, namespace, name string, kclient kclient.Interface, w *tabwriter.Writer) {
-	hpaList, err := kclient.Extensions().HorizontalPodAutoscalers(namespace).List(kapi.ListOptions{LabelSelector: labels.Everything()})
+	hpaList, err := kclient.Autoscaling().HorizontalPodAutoscalers(namespace).List(kapi.ListOptions{LabelSelector: labels.Everything()})
 	if err != nil {
 		return
 	}
 
-	scaledBy := []extensions.HorizontalPodAutoscaler{}
+	scaledBy := []autoscaling.HorizontalPodAutoscaler{}
 	for _, hpa := range hpaList.Items {
-		if hpa.Spec.ScaleRef.Name == name && hpa.Spec.ScaleRef.Kind == res.String() {
+		if hpa.Spec.ScaleTargetRef.Name == name && hpa.Spec.ScaleTargetRef.Kind == res.String() {
 			scaledBy = append(scaledBy, hpa)
 		}
 	}
 
 	for _, hpa := range scaledBy {
 		cpuUtil := ""
-		if hpa.Spec.CPUUtilization != nil {
-			cpuUtil = fmt.Sprintf(", triggered at %d%% CPU usage", hpa.Spec.CPUUtilization.TargetPercentage)
+		if hpa.Spec.TargetCPUUtilizationPercentage != nil {
+			cpuUtil = fmt.Sprintf(", triggered at %d%% CPU usage", *hpa.Spec.TargetCPUUtilizationPercentage)
 		}
 		fmt.Fprintf(w, "Autoscaling:\tbetween %d and %d replicas%s\n", *hpa.Spec.MinReplicas, hpa.Spec.MaxReplicas, cpuUtil)
 		// TODO: Print a warning in case of multiple hpas.

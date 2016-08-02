@@ -1,16 +1,18 @@
 {
     "kind": "Template",
-    "apiVersion": "v1beta3",
+    "apiVersion": "v1",
     "metadata": {
         "name": "guestbook-example",
         "creationTimestamp": null,
         "annotations": {
+            "openshift.io/display-name": "Guestbook Example",
             "description": "Example shows how to build a simple multi-tier application using Kubernetes and Docker"
         }
     },
+    "message": "Your admin credentials are adminQ3H:dwNJiJwW",
     "objects": [
         {
-            "apiVersion": "v1beta3",
+            "apiVersion": "v1",
             "kind": "Route",
             "metadata": {
                 "creationTimestamp": null,
@@ -26,7 +28,7 @@
             "status": {}
         },
         {
-            "apiVersion": "v1beta3",
+            "apiVersion": "v1",
             "kind": "Service",
             "metadata": {
                 "creationTimestamp": null,
@@ -53,7 +55,7 @@
             }
         },
         {
-            "apiVersion": "v1beta3",
+            "apiVersion": "v1",
             "kind": "Service",
             "metadata": {
                 "creationTimestamp": null,
@@ -80,7 +82,7 @@
             }
         },
         {
-            "apiVersion": "v1beta3",
+            "apiVersion": "v1",
             "kind": "Service",
             "metadata": {
                 "creationTimestamp": null,
@@ -107,7 +109,7 @@
             }
         },
         {
-            "apiVersion": "v1beta3",
+            "apiVersion": "v1",
             "kind": "Pod",
             "metadata": {
                 "creationTimestamp": null,
@@ -150,7 +152,7 @@
             "status": {}
         },
         {
-            "apiVersion": "v1beta3",
+            "apiVersion": "v1",
             "kind": "ReplicationController",
             "metadata": {
                 "creationTimestamp": null,
@@ -218,7 +220,7 @@
             }
         },
         {
-            "apiVersion": "v1beta3",
+            "apiVersion": "v1",
             "kind": "ReplicationController",
             "metadata": {
                 "creationTimestamp": null,

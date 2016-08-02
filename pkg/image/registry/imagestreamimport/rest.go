@@ -250,7 +250,7 @@ func (r *REST) Create(ctx kapi.Context, obj runtime.Object) (runtime.Object, err
 				glog.V(4).Infof("updated stream %s", diff.ObjectDiff(original, stream))
 			}
 			stream.Annotations[api.DockerImageRepositoryCheckAnnotation] = now.UTC().Format(time.RFC3339)
-			obj, _, err = r.internalStreams.Update(ctx, stream)
+			obj, _, err = r.internalStreams.Update(ctx, stream.Name, rest.DefaultUpdatedObjectInfo(stream, kapi.Scheme))
 		}
 	}
 
@@ -331,6 +331,7 @@ func (r *REST) importSuccessful(
 	image *api.Image, stream *api.ImageStream, tag string, from string, nextGeneration int64, now unversioned.Time, importPolicy api.TagImportPolicy,
 	importedImages map[string]error, updatedImages map[string]*api.Image,
 ) (*api.Image, bool) {
+	Strategy.PrepareImageForCreate(image)
 
 	pullSpec, _ := api.MostAccuratePullSpec(image.DockerImageReference, image.Name, "")
 	tagEvent := api.TagEvent{
@@ -426,5 +427,5 @@ func newImportFailedCondition(err error, gen int64, now unversioned.Time) api.Ta
 }
 
 func invalidStatus(kind, position string, errs ...*field.Error) unversioned.Status {
-	return kapierrors.NewInvalid(api.Kind(kind), position, errs).(kapierrors.APIStatus).Status()
+	return kapierrors.NewInvalid(api.Kind(kind), position, errs).ErrStatus
 }

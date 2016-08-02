@@ -1,9 +1,8 @@
 package cache
 
 import (
-	"fmt"
-
 	kapi "k8s.io/kubernetes/pkg/api"
+	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/labels"
 
@@ -34,7 +33,20 @@ func (s *StoreToDeploymentConfigLister) GetConfigForController(rc *kapi.Replicat
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("deployment config %q not found", dcName)
+		return nil, kapierrors.NewNotFound(deployapi.Resource("deploymentconfig"), dcName)
+	}
+	return obj.(*deployapi.DeploymentConfig), nil
+}
+
+// GetConfigForPod returns the managing deployment config for the provided pod.
+func (s *StoreToDeploymentConfigLister) GetConfigForPod(pod *kapi.Pod) (*deployapi.DeploymentConfig, error) {
+	dcName := deployutil.DeploymentConfigNameFor(pod)
+	obj, exists, err := s.Indexer.GetByKey(pod.Namespace + "/" + dcName)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, kapierrors.NewNotFound(deployapi.Resource("deploymentconfig"), dcName)
 	}
 	return obj.(*deployapi.DeploymentConfig), nil
 }
@@ -71,7 +83,7 @@ func (s storeDeploymentConfigsNamespacer) Get(name string) (*deployapi.Deploymen
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("deployment config %q not found", name)
+		return nil, kapierrors.NewNotFound(deployapi.Resource("deploymentconfig"), name)
 	}
 	return obj.(*deployapi.DeploymentConfig), nil
 }

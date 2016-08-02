@@ -179,6 +179,37 @@ Displays merged kubeconfig settings or a specified kubeconfig file.
 ====
 
 
+== oadm cordon
+Mark node as unschedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as unschedulable.
+oadm cordon foo
+
+----
+====
+
+
+== oadm drain
+Drain node in preparation for maintenance
+
+====
+
+[options="nowrap"]
+----
+# Drain node "foo", even if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet on it.
+$ oadm drain foo --force
+
+# As above, but abort if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet, and use a grace period of 15 minutes.
+$ oadm drain foo --grace-period=900
+
+----
+====
+
+
 == oadm groups add-users
 Add users to a group
 
@@ -318,6 +349,54 @@ Manage nodes - list pods, evacuate, or mark ready
 
 	# List all pods on given nodes
 	oadm manage-node <mynode1> <mynode2> --list-pods
+----
+====
+
+
+== oadm migrate image-references
+Update embedded Docker image references
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of migrating all "docker.io" references to "myregistry.com"
+  oadm migrate image-references docker.io/*=myregistry.com/*
+
+  # To actually perform the migration, the confirm flag must be appended
+  oadm migrate image-references docker.io/*=myregistry.com/* --confirm
+
+  # To see more details of what will be migrated, use the loglevel and output flags
+  oadm migrate image-references docker.io/*=myregistry.com/* --loglevel=2 -o yaml
+
+  # Migrate from a service IP to an internal service DNS name
+  oadm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/*
+
+  # Migrate from a service IP to an internal service DNS name for all deployment configs and builds
+  oadm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/* --include=buildconfigs,deploymentconfigs
+----
+====
+
+
+== oadm migrate storage
+Update the stored version of API objects
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of updating all objects
+  oadm migrate storage
+
+  # To actually perform the update, the confirm flag must be appended
+  oadm migrate storage --confirm
+
+  # Only migrate pods
+  oadm migrate storage --include=pods --confirm
+
+  # Only pods that are in namespaces starting with "bar"
+  oadm migrate storage --include=pods --confirm --from-key=bar/ --to-key=bar/\xFF
+
 ----
 ====
 
@@ -523,6 +602,13 @@ Remove unreferenced images
 
   # To actually perform the prune operation, the confirm flag must be appended
   oadm prune images --keep-tag-revisions=3 --keep-younger-than=60m --confirm
+
+  # See, what the prune command would delete if we're interested in removing images
+  # exceeding currently set LimitRanges ('openshift.io/Image')
+  oadm prune images --prune-over-size-limit
+
+  # To actually perform the prune operation, the confirm flag must be appended
+  oadm prune images --prune-over-size-limit --confirm
 ----
 ====
 
@@ -574,6 +660,36 @@ Install a router
   # Run the router with a hint to the underlying implementation to _not_ expose statistics.
   oadm router router-west --stats-port=0
   
+----
+====
+
+
+== oadm taint
+Update the taints on one or more nodes
+
+====
+
+[options="nowrap"]
+----
+# Update node 'foo' with a taint with key 'dedicated' and value 'special-user' and effect 'NoSchedule'.
+# If a taint with that key already exists, its value and effect are replaced as specified.
+oadm taint nodes foo dedicated=special-user:NoSchedule
+# Remove from node 'foo' the taint with key 'dedicated' if one exists.
+oadm taint nodes foo dedicated-
+----
+====
+
+
+== oadm uncordon
+Mark node as schedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as schedulable.
+$ oadm uncordon foo
+
 ----
 ====
 

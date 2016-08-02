@@ -5,7 +5,6 @@
 
 %global gopath      %{_datadir}/gocode
 %global import_path github.com/openshift/origin
-%global sdn_import_path github.com/openshift/openshift-sdn
 # The following should only be used for cleanup of sdn-ovs upgrades
 %global kube_plugin_path /usr/libexec/kubernetes/kubelet-plugins/net/exec/redhat~openshift-ovs-subnet
 
@@ -56,6 +55,7 @@ ExclusiveArch:  x86_64
 Source0:        https://%{import_path}/archive/%{commit}/%{name}-%{version}.tar.gz
 BuildRequires:  systemd
 BuildRequires:  golang = %{golang_version}
+BuildRequires:  krb5-devel
 Requires:       %{name}-clients = %{version}-%{release}
 Requires:       iptables
 Obsoletes:      openshift < %{package_refector_version}
@@ -183,15 +183,14 @@ popd
 mkdir _thirdpartyhacks
 pushd _thirdpartyhacks
     ln -s \
-        $(dirs +1 -l)/Godeps/_workspace/src/ \
+        $(dirs +1 -l)/vendor/ \
             src
 popd
 export GOPATH=$(pwd)/_build:$(pwd)/_thirdpartyhacks:%{buildroot}%{gopath}:%{gopath}
 # Build all linux components we care about
-for cmd in oc openshift dockerregistry
-do
-        go install -ldflags "%{ldflags}" %{import_path}/cmd/${cmd}
-done
+go install -ldflags "%{ldflags}" %{import_path}/cmd/dockerregistry
+go install -ldflags "%{ldflags}" -tags=gssapi %{import_path}/cmd/openshift
+go install -ldflags "%{ldflags}" -tags=gssapi %{import_path}/cmd/oc
 go test -c -o _build/bin/extended.test -ldflags "%{ldflags}" %{import_path}/test/extended
 
 %if 0%{?make_redistributable}
@@ -283,7 +282,7 @@ mkdir -p %{buildroot}%{_sharedstatedir}/origin
 # Install sdn scripts
 install -d -m 0755 %{buildroot}%{_unitdir}/docker.service.d
 install -p -m 0644 contrib/systemd/docker-sdn-ovs.conf %{buildroot}%{_unitdir}/docker.service.d/
-pushd _thirdpartyhacks/src/%{sdn_import_path}/plugins/osdn/bin
+pushd pkg/sdn/plugin/bin
    install -p -m 755 openshift-sdn-ovs %{buildroot}%{_bindir}/openshift-sdn-ovs
    install -p -m 755 openshift-sdn-docker-setup.sh %{buildroot}%{_bindir}/openshift-sdn-docker-setup.sh
 popd

@@ -1,8 +1,10 @@
 package validation
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/docker/distribution/reference"
 	"github.com/golang/glog"
@@ -32,15 +34,15 @@ var RepositoryNameComponentAnchoredRegexp = regexp.MustCompile(`^` + RepositoryN
 // Copied from github.com/docker/distribution/registry/api/v2/names.go v2.1.1
 var RepositoryNameRegexp = regexp.MustCompile(`(?:` + RepositoryNameComponentRegexp.String() + `/)*` + RepositoryNameComponentRegexp.String())
 
-func ValidateImageStreamName(name string, prefix bool) (bool, string) {
-	if ok, reason := oapi.MinimalNameRequirements(name, prefix); !ok {
-		return ok, reason
+func ValidateImageStreamName(name string, prefix bool) []string {
+	if reasons := oapi.MinimalNameRequirements(name, prefix); len(reasons) != 0 {
+		return reasons
 	}
 
 	if !RepositoryNameComponentAnchoredRegexp.MatchString(name) {
-		return false, fmt.Sprintf("must match %q", RepositoryNameComponentRegexp.String())
+		return []string{fmt.Sprintf("must match %q", RepositoryNameComponentRegexp.String())}
 	}
-	return true, ""
+	return nil
 }
 
 // ValidateImage tests required fields for an Image.
@@ -66,9 +68,30 @@ func validateImage(image *api.Image, fldPath *field.Path) field.ErrorList {
 	return result
 }
 
-func validateImageSignature(signature *api.ImageSignature, fldPath *field.Path) field.ErrorList {
-	allErrs := field.ErrorList{}
+func ValidateImageUpdate(newImage, oldImage *api.Image) field.ErrorList {
+	result := validation.ValidateObjectMetaUpdate(&newImage.ObjectMeta, &oldImage.ObjectMeta, field.NewPath("metadata"))
+	result = append(result, ValidateImage(newImage)...)
 
+	return result
+}
+
+// ValidateImageSignature ensures that given signatures is valid.
+func ValidateImageSignature(signature *api.ImageSignature) field.ErrorList {
+	return validateImageSignature(signature, nil)
+}
+
+func validateImageSignature(signature *api.ImageSignature, fldPath *field.Path) field.ErrorList {
+	allErrs := validation.ValidateObjectMeta(&signature.ObjectMeta, false, oapi.MinimalNameRequirements, fldPath.Child("metadata"))
+	if len(signature.Labels) > 0 {
+		allErrs = append(allErrs, field.Forbidden(fldPath.Child("metadata").Child("labels"), "signature labels cannot be set"))
+	}
+	if len(signature.Annotations) > 0 {
+		allErrs = append(allErrs, field.Forbidden(fldPath.Child("metadata").Child("annotations"), "signature annotations cannot be set"))
+	}
+
+	if _, _, err := api.SplitImageSignatureName(signature.Name); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("metadata").Child("name"), signature.Name, "name must be of format <imageName>@<signatureName>"))
+	}
 	if len(signature.Type) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("type"), ""))
 	}
@@ -112,11 +135,19 @@ func validateImageSignature(signature *api.ImageSignature, fldPath *field.Path) 
 	return allErrs
 }
 
-func ValidateImageUpdate(newImage, oldImage *api.Image) field.ErrorList {
-	result := validation.ValidateObjectMetaUpdate(&newImage.ObjectMeta, &oldImage.ObjectMeta, field.NewPath("metadata"))
-	result = append(result, ValidateImage(newImage)...)
+// ValidateImageSignatureUpdate ensures that the new ImageSignature is valid.
+func ValidateImageSignatureUpdate(newImageSignature, oldImageSignature *api.ImageSignature) field.ErrorList {
+	allErrs := validation.ValidateObjectMetaUpdate(&newImageSignature.ObjectMeta, &oldImageSignature.ObjectMeta, field.NewPath("metadata"))
+	allErrs = append(allErrs, ValidateImageSignature(newImageSignature)...)
 
-	return result
+	if newImageSignature.Type != oldImageSignature.Type {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("type"), "cannot change signature type"))
+	}
+	if !bytes.Equal(newImageSignature.Content, oldImageSignature.Content) {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("content"), "cannot change signature content"))
+	}
+
+	return allErrs
 }
 
 // ValidateImageStream tests required fields for an ImageStream.
@@ -209,8 +240,8 @@ func ValidateImageStreamMapping(mapping *api.ImageStreamMapping) field.ErrorList
 		result = append(result, field.Required(field.NewPath("dockerImageRepository"), ""))
 	}
 
-	if ok, msg := validation.ValidateNamespaceName(mapping.Namespace, false); !ok {
-		result = append(result, field.Invalid(field.NewPath("metadata", "namespace"), mapping.Namespace, msg))
+	if reasons := validation.ValidateNamespaceName(mapping.Namespace, false); len(reasons) != 0 {
+		result = append(result, field.Invalid(field.NewPath("metadata", "namespace"), mapping.Namespace, strings.Join(reasons, ", ")))
 	}
 	if len(mapping.Tag) == 0 {
 		result = append(result, field.Required(field.NewPath("tag"), ""))

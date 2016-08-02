@@ -37,6 +37,7 @@ var PrinterCoverageExceptions = []reflect.Type{
 	reflect.TypeOf(&authorizationapi.SubjectAccessReviewResponse{}),
 	reflect.TypeOf(&authorizationapi.ResourceAccessReviewResponse{}),
 	reflect.TypeOf(&authorizationapi.SubjectAccessReview{}),
+	reflect.TypeOf(&imageapi.ImageSignature{}),
 	reflect.TypeOf(&authorizationapi.ResourceAccessReview{}),
 	reflect.TypeOf(&authorizationapi.LocalSubjectAccessReview{}),
 	reflect.TypeOf(&authorizationapi.LocalResourceAccessReview{}),
@@ -60,12 +61,11 @@ var MissingPrinterCoverageExceptions = []reflect.Type{
 }
 
 func TestPrinterCoverage(t *testing.T) {
-	// noHeaders, withNamespace, wide bool, showAll bool, absoluteTimestamps bool, columnLabels []string
-	printer := NewHumanReadablePrinter(false, false, false, false, false, false, []string{})
+	printer := NewHumanReadablePrinter(nil)
 
 main:
 	for _, apiType := range kapi.Scheme.KnownTypes(api.SchemeGroupVersion) {
-		if !strings.Contains(apiType.PkgPath(), "openshift/origin") {
+		if !strings.Contains(apiType.PkgPath(), "github.com/openshift/origin") || strings.Contains(apiType.PkgPath(), "github.com/openshift/origin/vendor/") {
 			continue
 		}
 
@@ -86,6 +86,23 @@ main:
 
 		if err := printer.PrintObj(newStruct.(runtime.Object), ioutil.Discard); (err != nil) && strings.Contains(err.Error(), "error: unknown type ") {
 			t.Errorf("missing printer for %v.  Check pkg/cmd/cli/describe/printer.go", apiType)
+		}
+	}
+}
+
+func TestFormatResourceName(t *testing.T) {
+	tests := []struct {
+		kind, name string
+		want       string
+	}{
+		{"", "", ""},
+		{"", "name", "name"},
+		{"kind", "", "kind/"}, // should not happen in practice
+		{"kind", "name", "kind/name"},
+	}
+	for _, tt := range tests {
+		if got := formatResourceName(tt.kind, tt.name, true); got != tt.want {
+			t.Errorf("formatResourceName(%q, %q) = %q, want %q", tt.kind, tt.name, got, tt.want)
 		}
 	}
 }

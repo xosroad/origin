@@ -127,8 +127,8 @@ will be lost along with the rest of the resource.`
   # Delete pods and services with label name=myLabel.
   %[1]s delete pods,services -l name=myLabel
 
-  # Delete a pod with ID 1234-56-7890-234234-456456.
-  %[1]s delete pod 1234-56-7890-234234-456456
+  # Delete a pod with name node-1-vsjnm.
+  %[1]s delete pod node-1-vsjnm
 
   # Delete all resources associated with a running app, includes
   # buildconfig,deploymentconfig,service,imagestream,route and pod,
@@ -561,15 +561,15 @@ not supported, convert to latest version.
 The default output will be printed to stdout in YAML format. One can use -o option
 to change to output destination.
 `
-	convertExample = `# Convert 'pod.yaml' to latest version and print to stdout.
-%[1]s convert -f pod.yaml
+	convertExample = `  # Convert 'pod.yaml' to latest version and print to stdout.
+  %[1]s convert -f pod.yaml
 
-# Convert the live state of the resource specified by 'pod.yaml' to the latest version
-# and print to stdout in json format.
-%[1]s convert -f pod.yaml --local -o json
+  # Convert the live state of the resource specified by 'pod.yaml' to the latest version
+  # and print to stdout in json format.
+  %[1]s convert -f pod.yaml --local -o json
 
-# Convert all files under current directory to latest version and create them all.
-%[1]s convert -f . | kubectl create -f -
+  # Convert all files under current directory to latest version and create them all.
+  %[1]s convert -f . | %[1]s create -f -
 `
 )
 
@@ -612,8 +612,8 @@ saved copy to include the latest resource version.`
   # Use an alternative editor
   OC_EDITOR="nano" %[1]s edit dc/my-deployment
 
-  # Edit the service 'docker-registry' in JSON using the v1beta3 API format:
-  %[1]s edit svc/docker-registry --output-version=v1beta3 -o json`
+  # Edit the service 'docker-registry' in JSON using the v1 API format:
+  %[1]s edit svc/docker-registry --output-version=v1 -o json`
 )
 
 // NewCmdEdit is a wrapper for the Kubernetes cli edit command

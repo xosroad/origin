@@ -22,7 +22,7 @@ For more information, see these articles:
 * http://opensource.com/business/14/7/docker-security-selinux
 * https://docs.docker.com/articles/security/
 
-The OpenShift security model will continue to evolve and tighten as we head towards production ready code.
+The OpenShift security model will continue to evolve and tighten going forward.
 
 Setup
 -----
@@ -145,8 +145,12 @@ This section covers how to perform all the steps of building, deploying, and upd
 4. Deploy a private docker registry within OpenShift with the certs necessary for access to master:
 
         $ oadm registry -n default --config=openshift.local.config/master/admin.kubeconfig
-          DeploymentConfig "docker-registry" created
-          Service "docker-registry" created
+        --> Creating registry registry ...
+            serviceaccount "registry" created
+            clusterrolebinding "registry-registry-role" created
+            deploymentconfig "docker-registry" created
+            service "docker-registry" created
+        --> Success  
 
     Note that the private Docker registry is using ephemeral storage,
     so when it is stopped, the image will be lost. An external volume

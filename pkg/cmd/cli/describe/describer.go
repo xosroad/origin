@@ -31,6 +31,7 @@ import (
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	quotaapi "github.com/openshift/origin/pkg/quota/api"
 	routeapi "github.com/openshift/origin/pkg/route/api"
+	sdnapi "github.com/openshift/origin/pkg/sdn/api"
 	templateapi "github.com/openshift/origin/pkg/template/api"
 	userapi "github.com/openshift/origin/pkg/user/api"
 )
@@ -62,6 +63,7 @@ func describerMap(c *client.Client, kclient kclient.Interface, host string) map[
 		userapi.Kind("UserIdentityMapping"):           &UserIdentityMappingDescriber{c},
 		quotaapi.Kind("ClusterResourceQuota"):         &ClusterQuotaDescriber{c},
 		quotaapi.Kind("AppliedClusterResourceQuota"):  &AppliedClusterQuotaDescriber{c},
+		sdnapi.Kind("EgressNetworkPolicy"):            &EgressNetworkPolicyDescriber{c},
 	}
 	return m
 }
@@ -870,6 +872,15 @@ type TemplateDescriber struct {
 	kctl.ObjectDescriber
 }
 
+// DescribeMessage prints the message that will be parameter substituted and displayed to the
+// user when this template is processed.
+func (d *TemplateDescriber) DescribeMessage(msg string, out *tabwriter.Writer) {
+	if len(msg) == 0 {
+		msg = "<none>"
+	}
+	formatString(out, "Message", msg)
+}
+
 // DescribeParameters prints out information about the parameters of a template
 func (d *TemplateDescriber) DescribeParameters(params []templateapi.Parameter, out *tabwriter.Writer) {
 	formatString(out, "Parameters", " ")
@@ -915,10 +926,14 @@ func (d *TemplateDescriber) describeObjects(objects []runtime.Object, out *tabwr
 			continue
 		}
 
-		gvk, _ := d.ObjectTyper.ObjectKind(obj)
 		meta := kapi.ObjectMeta{}
 		meta.Name, _ = d.MetadataAccessor.Name(obj)
-		fmt.Fprintf(out, fmt.Sprintf("%s%s\t%s\n", indent, gvk.Kind, meta.Name))
+		gvk, _, err := d.ObjectTyper.ObjectKinds(obj)
+		if err != nil {
+			fmt.Fprintf(out, fmt.Sprintf("%s%s\t%s\n", indent, "<unknown>", meta.Name))
+			continue
+		}
+		fmt.Fprintf(out, fmt.Sprintf("%s%s\t%s\n", indent, gvk[0].Kind, meta.Name))
 		//meta.Annotations, _ = d.MetadataAccessor.Annotations(obj)
 		//meta.Labels, _ = d.MetadataAccessor.Labels(obj)
 		/*if len(meta.Labels) > 0 {
@@ -949,6 +964,8 @@ func (d *TemplateDescriber) DescribeTemplate(template *templateapi.Template) (st
 		d.DescribeParameters(template.Parameters, out)
 		out.Write([]byte("\n"))
 		formatString(out, "Object Labels", formatLabels(template.ObjectLabels))
+		out.Write([]byte("\n"))
+		d.DescribeMessage(template.Message, out)
 		out.Write([]byte("\n"))
 		out.Flush()
 		d.describeObjects(template.Objects, out)
@@ -1151,7 +1168,8 @@ func DescribePolicyRule(out *tabwriter.Writer, rule authorizationapi.PolicyRule,
 		extensionString = fmt.Sprintf("%#v", rule.AttributeRestrictions)
 
 		buffer := new(bytes.Buffer)
-		printer := NewHumanReadablePrinter(true, false, false, false, false, false, []string{})
+
+		printer := NewHumanReadablePrinter(&kctl.PrintOptions{NoHeaders: true})
 		if err := printer.PrintObj(rule.AttributeRestrictions, buffer); err == nil {
 			extensionString = strings.TrimSpace(buffer.String())
 		}
@@ -1422,14 +1440,15 @@ func (d *ClusterQuotaDescriber) Describe(namespace, name string, settings kctl.D
 }
 
 func DescribeClusterQuota(quota *quotaapi.ClusterResourceQuota) (string, error) {
-	selector, err := unversioned.LabelSelectorAsSelector(quota.Spec.Selector)
+	labelSelector, err := unversioned.LabelSelectorAsSelector(quota.Spec.Selector.LabelSelector)
 	if err != nil {
 		return "", err
 	}
 
 	return tabbedString(func(out *tabwriter.Writer) error {
 		formatMeta(out, quota.ObjectMeta)
-		fmt.Fprintf(out, "Selector:\t%s\n", selector)
+		fmt.Fprintf(out, "Label Selector: %s\n", labelSelector)
+		fmt.Fprintf(out, "AnnotationSelector: %s\n", quota.Spec.Selector.AnnotationSelector)
 		if len(quota.Spec.Quota.Scopes) > 0 {
 			scopes := []string{}
 			for _, scope := range quota.Spec.Quota.Scopes {
@@ -1468,4 +1487,24 @@ func (d *AppliedClusterQuotaDescriber) Describe(namespace, name string, settings
 		return "", err
 	}
 	return DescribeClusterQuota(quotaapi.ConvertAppliedClusterResourceQuotaToClusterResourceQuota(quota))
+}
+
+type EgressNetworkPolicyDescriber struct {
+	osClient client.Interface
+}
+
+// Describe returns the description of an EgressNetworkPolicy
+func (d *EgressNetworkPolicyDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
+	c := d.osClient.EgressNetworkPolicies(namespace)
+	policy, err := c.Get(name)
+	if err != nil {
+		return "", err
+	}
+	return tabbedString(func(out *tabwriter.Writer) error {
+		formatMeta(out, policy.ObjectMeta)
+		for _, rule := range policy.Spec.Egress {
+			fmt.Fprintf(out, "Rule:\t%s to %s\n", rule.Type, rule.To.CIDRSelector)
+		}
+		return nil
+	})
 }

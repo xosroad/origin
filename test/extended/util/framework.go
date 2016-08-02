@@ -92,6 +92,15 @@ func DumpImageStreams(oc *CLI) {
 	}
 }
 
+func DumpNamedBuildLogs(buildName string, oc *CLI) {
+	bldOuput, err := oc.Run("logs").Args("-f", "build/"+buildName).Output()
+	if err == nil {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n  build logs for %s: %s\n\n", buildName, bldOuput)
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n  got error on bld logs for %s: %+v\n\n", buildName, err)
+	}
+}
+
 // DumpBuildLogs will dump the latest build logs for a BuildConfig for debug purposes
 func DumpBuildLogs(bc string, oc *CLI) {
 	bldOuput, err := oc.Run("logs").Args("-f", "bc/"+bc).Output()
@@ -110,10 +119,10 @@ func DumpBuildLogs(bc string, oc *CLI) {
 		}*/
 	}
 
-	// if we suspect that we are filling up the registry file syste, call ExamineDiskUsage / ExaminePodDiskUsage
+	// if we suspect that we are filling up the registry file system, call ExamineDiskUsage / ExaminePodDiskUsage
 	// also see if manipulations of the quota around /mnt/openshift-xfs-vol-dir exist in the extended test set up scripts
-	//ExamineDiskUsage()
-	//ExaminePodDiskUsage(oc)
+	ExamineDiskUsage()
+	ExaminePodDiskUsage(oc)
 }
 
 // DumpDeploymentLogs will dump the latest deployment logs for a DeploymentConfig for debug purposes
@@ -136,7 +145,7 @@ func DumpDeploymentLogs(dc string, oc *CLI) {
 					podName := pod.ObjectMeta.Name
 
 					fmt.Fprintf(g.GinkgoWriter, "\n\n dumping logs for pod %s \n\n", podName)
-					depOuput, err := oc.Run("logs").Args("-f", "pod/"+podName).Output()
+					depOuput, err := oc.Run("logs").Args("pod/" + podName).Output()
 					if err == nil {
 						fmt.Fprintf(g.GinkgoWriter, "\n\n  logs for pod %s : %s\n\n", podName, depOuput)
 					} else {
@@ -169,6 +178,12 @@ func ExamineDiskUsage() {
 		fmt.Fprintf(g.GinkgoWriter, "\n\n df -m output: %s\n\n", string(out))
 	} else {
 		fmt.Fprintf(g.GinkgoWriter, "\n\n got error on df %v\n\n", err)
+	}
+	out, err = exec.Command("/bin/docker", "info").Output()
+	if err == nil {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n docker info output: \n%s\n\n", string(out))
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n got error on docker inspect %v\n\n", err)
 	}
 }
 

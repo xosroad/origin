@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	unversionedvalidation "k8s.io/kubernetes/pkg/api/unversioned/validation"
 	"k8s.io/kubernetes/pkg/api/validation"
+	kapivalidation "k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	kvalidation "k8s.io/kubernetes/pkg/util/validation"
 	"k8s.io/kubernetes/pkg/util/validation/field"
@@ -36,7 +38,16 @@ func ValidateDeploymentConfigSpec(spec deployapi.DeploymentConfigSpec) field.Err
 	if spec.Template != nil {
 		podSpec = &spec.Template.Spec
 	}
+
 	allErrs = append(allErrs, validateDeploymentStrategy(&spec.Strategy, podSpec, specPath.Child("strategy"))...)
+	if spec.RevisionHistoryLimit != nil {
+		allErrs = append(allErrs, kapivalidation.ValidateNonnegativeField(int64(*spec.RevisionHistoryLimit), specPath.Child("revisionHistoryLimit"))...)
+	}
+	allErrs = append(allErrs, kapivalidation.ValidateNonnegativeField(int64(spec.MinReadySeconds), specPath.Child("minReadySeconds"))...)
+	if int64(spec.MinReadySeconds) >= deployapi.DefaultRollingTimeoutSeconds {
+		allErrs = append(allErrs, field.Invalid(specPath.Child("minReadySeconds"), spec.MinReadySeconds,
+			fmt.Sprintf("must be less than the deployment timeout (%ds)", deployapi.DefaultRollingTimeoutSeconds)))
+	}
 	if spec.Template == nil {
 		allErrs = append(allErrs, field.Required(specPath.Child("template"), ""))
 	} else {
@@ -150,7 +161,7 @@ func ValidateDeploymentConfigRollback(rollback *deployapi.DeploymentConfigRollba
 
 	if len(rollback.Name) == 0 {
 		result = append(result, field.Required(field.NewPath("name"), "name of the deployment config is missing"))
-	} else if !kvalidation.IsDNS1123Subdomain(rollback.Name) {
+	} else if len(kvalidation.IsDNS1123Subdomain(rollback.Name)) != 0 {
 		result = append(result, field.Invalid(field.NewPath("name"), rollback.Name, "name of the deployment config is invalid"))
 	}
 
@@ -417,7 +428,7 @@ func validateImageChangeParams(params *deployapi.DeploymentTriggerImageChangePar
 		if err := validateImageStreamTagName(params.From.Name); err != nil {
 			errs = append(errs, field.Invalid(fromPath.Child("name"), params.From.Name, err.Error()))
 		}
-		if len(params.From.Namespace) != 0 && !kvalidation.IsDNS1123Subdomain(params.From.Namespace) {
+		if len(params.From.Namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(params.From.Namespace)) != 0 {
 			errs = append(errs, field.Invalid(fromPath.Child("namespace"), params.From.Namespace, "namespace must be a valid subdomain"))
 		}
 	}
@@ -432,11 +443,10 @@ func validateImageChangeParams(params *deployapi.DeploymentTriggerImageChangePar
 func validateImageStreamTagName(istag string) error {
 	name, _, ok := imageapi.SplitImageStreamTag(istag)
 	if !ok {
-		return fmt.Errorf("invalid ImageStreamTag: %s", istag)
+		return fmt.Errorf("must be in the form of <name>:<tag>")
 	}
-	ok, reason := imageval.ValidateImageStreamName(name, false)
-	if !ok {
-		return errors.New(reason)
+	if reasons := imageval.ValidateImageStreamName(name, false); len(reasons) != 0 {
+		return errors.New(strings.Join(reasons, ", "))
 	}
 	return nil
 }

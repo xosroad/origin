@@ -234,7 +234,7 @@ func TestProjectStatus(t *testing.T) {
 				"sinatra-app-example-b deploys",
 				"on docker.io/centos/ruby-22-centos7:latest",
 				"build #1 running for about a minute",
-				"- 7a4f354: Prepare v1beta3 Template types (Roy Programmer <someguy@outhere.com>)",
+				"- 7a4f354: Prepare v1 Template types (Roy Programmer <someguy@outhere.com>)",
 				"View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.",
 			},
 			Time: mustParseTime("2015-04-06T21:20:03Z"),
@@ -347,7 +347,7 @@ func TestProjectStatus(t *testing.T) {
 			o.Add(obj)
 		}
 		oc, kc := testclient.NewFixtureClients(o)
-		d := ProjectStatusDescriber{C: oc, K: kc, Server: "https://example.com:8443", Suggest: true, LogsCommandName: "oc logs -p", SecurityPolicyCommandFormat: "policycommand %s %s"}
+		d := ProjectStatusDescriber{C: oc, K: kc, Server: "https://example.com:8443", Suggest: true, CommandBaseName: "oc", LogsCommandName: "oc logs -p", SecurityPolicyCommandFormat: "policycommand %s %s"}
 		out, err := d.Describe("example", "")
 		if !test.ErrFn(err) {
 			t.Errorf("%s: unexpected error: %v", k, err)

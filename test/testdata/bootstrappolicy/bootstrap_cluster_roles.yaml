@@ -48,6 +48,7 @@ items:
     - bindings
     - componentstatuses
     - configmaps
+    - egressnetworkpolicies
     - endpoints
     - events
     - limitranges
@@ -122,6 +123,7 @@ items:
     - ingresses/status
     - jobs
     - jobs/status
+    - networkpolicies
     - podsecuritypolicies
     - replicasets
     - replicasets/scale
@@ -179,6 +181,7 @@ items:
     attributeRestrictions: null
     resources:
     - images
+    - imagesignatures
     - imagestreamimages
     - imagestreams
     - imagestreams/status
@@ -218,15 +221,8 @@ items:
     attributeRestrictions: null
     resources:
     - appliedclusterresourcequotas
-    verbs:
-    - get
-    - list
-    - watch
-  - apiGroups:
-    - ""
-    attributeRestrictions: null
-    resources:
     - clusterresourcequotas
+    - clusterresourcequotas/status
     verbs:
     - get
     - list
@@ -284,6 +280,13 @@ items:
     - resourceaccessreviews
     - selfsubjectrulesreviews
     - subjectaccessreviews
+    verbs:
+    - create
+  - apiGroups:
+    - authentication.k8s.io
+    attributeRestrictions: null
+    resources:
+    - tokenreviews
     verbs:
     - create
   - apiGroups:
@@ -481,8 +484,12 @@ items:
     - extensions
     attributeRestrictions: null
     resources:
+    - deployments
+    - deployments/scale
     - horizontalpodautoscalers
     - jobs
+    - replicasets
+    - replicasets/scale
     - replicationcontrollers/scale
     verbs:
     - create
@@ -838,8 +845,12 @@ items:
     - extensions
     attributeRestrictions: null
     resources:
+    - deployments
+    - deployments/scale
     - horizontalpodautoscalers
     - jobs
+    - replicasets
+    - replicasets/scale
     - replicationcontrollers/scale
     verbs:
     - create
@@ -1102,8 +1113,12 @@ items:
     - extensions
     attributeRestrictions: null
     resources:
+    - deployments
+    - deployments/scale
     - horizontalpodautoscalers
     - jobs
+    - replicasets
+    - replicasets/scale
     verbs:
     - get
     - list
@@ -1300,6 +1315,29 @@ items:
   kind: ClusterRole
   metadata:
     creationTimestamp: null
+    name: self-access-reviewer
+  rules:
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - selfsubjectrulesreviews
+    verbs:
+    - create
+  - apiGroups:
+    - ""
+    attributeRestrictions:
+      apiVersion: v1
+      kind: IsPersonalSubjectAccessReview
+    resources:
+    - localsubjectaccessreviews
+    - subjectaccessreviews
+    verbs:
+    - create
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    creationTimestamp: null
     name: self-provisioner
   rules:
   - apiGroups:
@@ -1430,6 +1468,13 @@ items:
     - ""
     attributeRestrictions: null
     resources:
+    - limitranges
+    verbs:
+    - list
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
     - buildconfigs
     - builds
     verbs:
@@ -1466,6 +1511,28 @@ items:
     - imagestreams/status
     verbs:
     - update
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    creationTimestamp: null
+    name: system:image-signer
+  rules:
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - images
+    - imagestreams/layers
+    verbs:
+    - get
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - imagesignatures
+    verbs:
+    - create
+    - delete
 - apiVersion: v1
   kind: ClusterRole
   metadata:
@@ -1698,6 +1765,13 @@ items:
     name: system:node
   rules:
   - apiGroups:
+    - authentication.k8s.io
+    attributeRestrictions: null
+    resources:
+    - tokenreviews
+    verbs:
+    - create
+  - apiGroups:
     - ""
     attributeRestrictions: null
     resources:
@@ -1810,6 +1884,15 @@ items:
     resources:
     - namespaces
     - nodes
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - egressnetworkpolicies
     verbs:
     - get
     - list
@@ -2205,6 +2288,59 @@ items:
     name: system:deployment-controller
   rules:
   - apiGroups:
+    - extensions
+    attributeRestrictions: null
+    resources:
+    - deployments
+    verbs:
+    - get
+    - list
+    - update
+    - watch
+  - apiGroups:
+    - extensions
+    attributeRestrictions: null
+    resources:
+    - deployments/status
+    verbs:
+    - update
+  - apiGroups:
+    - extensions
+    attributeRestrictions: null
+    resources:
+    - replicasets
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - update
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - pods
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - events
+    verbs:
+    - create
+    - patch
+    - update
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    creationTimestamp: null
+    name: system:deploymentconfig-controller
+  rules:
+  - apiGroups:
     - ""
     attributeRestrictions: null
     resources:
@@ -2241,6 +2377,40 @@ items:
     - create
     - patch
     - update
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    creationTimestamp: null
+    name: system:endpoint-controller
+  rules:
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - pods
+    - services
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - endpoints
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - update
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - endpoints/restricted
+    verbs:
+    - create
 - apiVersion: v1
   kind: ClusterRole
   metadata:
@@ -2464,6 +2634,32 @@ items:
     - persistentvolumeclaims/status
     verbs:
     - update
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - pods
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - pods
+    verbs:
+    - create
+    - delete
+    - get
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - events
+    verbs:
+    - create
+    - patch
+    - update
 - apiVersion: v1
   kind: ClusterRole
   metadata:
@@ -2589,6 +2785,48 @@ items:
     - create
     - delete
     - get
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - events
+    verbs:
+    - create
+    - patch
+    - update
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    creationTimestamp: null
+    name: system:replicaset-controller
+  rules:
+  - apiGroups:
+    - extensions
+    attributeRestrictions: null
+    resources:
+    - replicasets
+    verbs:
+    - get
+    - list
+    - update
+    - watch
+  - apiGroups:
+    - extensions
+    attributeRestrictions: null
+    resources:
+    - replicasets/status
+    verbs:
+    - update
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - pods
+    verbs:
+    - create
+    - delete
+    - list
+    - watch
   - apiGroups:
     - ""
     attributeRestrictions: null

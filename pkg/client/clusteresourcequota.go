@@ -15,8 +15,11 @@ type ClusterResourceQuotaInterface interface {
 	List(opts kapi.ListOptions) (*quotaapi.ClusterResourceQuotaList, error)
 	Get(name string) (*quotaapi.ClusterResourceQuota, error)
 	Create(resourceQuota *quotaapi.ClusterResourceQuota) (*quotaapi.ClusterResourceQuota, error)
+	Update(resourceQuota *quotaapi.ClusterResourceQuota) (*quotaapi.ClusterResourceQuota, error)
 	Delete(name string) error
 	Watch(opts kapi.ListOptions) (watch.Interface, error)
+
+	UpdateStatus(resourceQuota *quotaapi.ClusterResourceQuota) (*quotaapi.ClusterResourceQuota, error)
 }
 
 type clusterResourceQuotas struct {
@@ -48,6 +51,12 @@ func (c *clusterResourceQuotas) Create(resourceQuota *quotaapi.ClusterResourceQu
 	return
 }
 
+func (c *clusterResourceQuotas) Update(resourceQuota *quotaapi.ClusterResourceQuota) (result *quotaapi.ClusterResourceQuota, err error) {
+	result = &quotaapi.ClusterResourceQuota{}
+	err = c.r.Put().Resource("clusterresourcequotas").Name(resourceQuota.Name).Body(resourceQuota).Do().Into(result)
+	return
+}
+
 func (c *clusterResourceQuotas) Delete(name string) (err error) {
 	err = c.r.Delete().Resource("clusterresourcequotas").Name(name).Do().Error()
 	return
@@ -55,4 +64,10 @@ func (c *clusterResourceQuotas) Delete(name string) (err error) {
 
 func (c *clusterResourceQuotas) Watch(opts kapi.ListOptions) (watch.Interface, error) {
 	return c.r.Get().Prefix("watch").Resource("clusterresourcequotas").VersionedParams(&opts, kapi.ParameterCodec).Watch()
+}
+
+func (c *clusterResourceQuotas) UpdateStatus(resourceQuota *quotaapi.ClusterResourceQuota) (result *quotaapi.ClusterResourceQuota, err error) {
+	result = &quotaapi.ClusterResourceQuota{}
+	err = c.r.Put().Resource("clusterresourcequotas").Name(resourceQuota.Name).SubResource("status").Body(resourceQuota).Do().Into(result)
+	return
 }

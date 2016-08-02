@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -10,6 +8,7 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	expapi "k8s.io/kubernetes/pkg/apis/extensions"
 )
@@ -18,6 +17,7 @@ func TestExtensionsAPIDisabledAutoscaleBatchEnabled(t *testing.T) {
 	const projName = "ext-disabled-batch-enabled-proj"
 
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	masterConfig, err := testserver.DefaultMasterOptions()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -59,11 +59,11 @@ func TestExtensionsAPIDisabledAutoscaleBatchEnabled(t *testing.T) {
 		t.Fatalf("unexpected error waiting for policy update: %v", err)
 	}
 
-	validHPA := &expapi.HorizontalPodAutoscaler{
+	validHPA := &autoscaling.HorizontalPodAutoscaler{
 		ObjectMeta: kapi.ObjectMeta{Name: "myjob"},
-		Spec: expapi.HorizontalPodAutoscalerSpec{
-			ScaleRef:    expapi.SubresourceReference{Name: "foo", Kind: "ReplicationController", Subresource: "scale"},
-			MaxReplicas: 1,
+		Spec: autoscaling.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscaling.CrossVersionObjectReference{Name: "foo", Kind: "ReplicationController"},
+			MaxReplicas:    1,
 		},
 	}
 	validJob := &batch.Job{
@@ -78,11 +78,17 @@ func TestExtensionsAPIDisabledAutoscaleBatchEnabled(t *testing.T) {
 		},
 	}
 
+	legacyAutoscalers := legacyExtensionsAutoscaling{
+		projectAdminKubeClient.Autoscaling().HorizontalPodAutoscalers(projName),
+		projectAdminKubeClient.ExtensionsClient.RESTClient,
+		projName,
+	}
+
 	// make sure extensions API objects cannot be listed or created
-	if _, err := projectAdminKubeClient.Extensions().HorizontalPodAutoscalers(projName).List(kapi.ListOptions{}); !errors.IsNotFound(err) {
+	if _, err := legacyAutoscalers.List(kapi.ListOptions{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error listing HPA, got %v", err)
 	}
-	if _, err := projectAdminKubeClient.Extensions().HorizontalPodAutoscalers(projName).Create(validHPA); !errors.IsNotFound(err) {
+	if _, err := legacyAutoscalers.Create(validHPA); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error creating HPA, got %v", err)
 	}
 	if _, err := projectAdminKubeClient.Extensions().Jobs(projName).List(kapi.ListOptions{}); !errors.IsNotFound(err) {
@@ -140,6 +146,7 @@ func TestExtensionsAPIDisabled(t *testing.T) {
 	const projName = "ext-disabled-proj"
 
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	masterConfig, err := testserver.DefaultMasterOptions()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -180,11 +187,17 @@ func TestExtensionsAPIDisabled(t *testing.T) {
 		t.Fatalf("unexpected error waiting for policy update: %v", err)
 	}
 
+	legacyAutoscalers := legacyExtensionsAutoscaling{
+		projectAdminKubeClient.Autoscaling().HorizontalPodAutoscalers(projName),
+		projectAdminKubeClient.AutoscalingClient.RESTClient,
+		projName,
+	}
+
 	// make sure extensions API objects cannot be listed or created
-	if _, err := projectAdminKubeClient.Extensions().HorizontalPodAutoscalers(projName).List(kapi.ListOptions{}); !errors.IsNotFound(err) {
+	if _, err := legacyAutoscalers.List(kapi.ListOptions{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error listing HPA, got %v", err)
 	}
-	if _, err := projectAdminKubeClient.Extensions().HorizontalPodAutoscalers(projName).Create(&expapi.HorizontalPodAutoscaler{}); !errors.IsNotFound(err) {
+	if _, err := legacyAutoscalers.Create(&autoscaling.HorizontalPodAutoscaler{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error creating HPA, got %v", err)
 	}
 	if _, err := projectAdminKubeClient.Extensions().Jobs(projName).List(kapi.ListOptions{}); !errors.IsNotFound(err) {

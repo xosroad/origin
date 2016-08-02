@@ -10,7 +10,8 @@ import (
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deploytest "github.com/openshift/origin/pkg/deploy/api/test"
-	scalertest "github.com/openshift/origin/pkg/deploy/scaler/test"
+	deployv1 "github.com/openshift/origin/pkg/deploy/api/v1"
+	cmdtest "github.com/openshift/origin/pkg/deploy/cmd/test"
 	"github.com/openshift/origin/pkg/deploy/strategy"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 
@@ -32,7 +33,7 @@ func TestDeployer_getDeploymentFail(t *testing.T) {
 			t.Fatal("unexpected call")
 			return nil, nil
 		},
-		scaler: &scalertest.FakeScaler{},
+		scaler: &cmdtest.FakeScaler{},
 	}
 
 	err := deployer.Deploy("namespace", "name")
@@ -117,6 +118,19 @@ func TestDeployer_deployScenarios(t *testing.T) {
 				{2, 0},
 			},
 		},
+		{
+			"version mismatch",
+			// existing deployments
+			[]*kapi.ReplicationController{
+				mkd(1, deployapi.DeploymentStatusComplete, 0, 0),
+				mkd(2, deployapi.DeploymentStatusNew, 3, 0),
+				mkd(3, deployapi.DeploymentStatusComplete, 0, 3),
+			},
+			// from and to version
+			3, 2,
+			// expected scale events
+			[]scaleEvent{},
+		},
 	}
 
 	for _, s := range scenarios {
@@ -133,7 +147,7 @@ func TestDeployer_deployScenarios(t *testing.T) {
 		var actualFrom, actualTo *kapi.ReplicationController
 		var actualDesired int32
 		to := findDeployment(s.toVersion)
-		scaler := &scalertest.FakeScaler{}
+		scaler := &cmdtest.FakeScaler{}
 
 		deployer := &Deployer{
 			out:    &bytes.Buffer{},
@@ -162,6 +176,12 @@ func TestDeployer_deployScenarios(t *testing.T) {
 		}
 
 		err := deployer.Deploy(to.Namespace, to.Name)
+		if s.toVersion < s.fromVersion {
+			if err == nil {
+				t.Fatalf("expected error when toVersion is older than newVersion")
+			}
+			continue
+		}
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -197,7 +217,7 @@ func TestDeployer_deployScenarios(t *testing.T) {
 }
 
 func mkdeployment(version int64, status deployapi.DeploymentStatus) *kapi.ReplicationController {
-	deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(version), kapi.Codecs.LegacyCodec(deployapi.SchemeGroupVersion))
+	deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(version), kapi.Codecs.LegacyCodec(deployv1.SchemeGroupVersion))
 	deployment.Annotations[deployapi.DeploymentStatusAnnotation] = string(status)
 	return deployment
 }

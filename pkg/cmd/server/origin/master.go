@@ -58,12 +58,14 @@ import (
 	"github.com/openshift/origin/pkg/image/registry/image"
 	imageetcd "github.com/openshift/origin/pkg/image/registry/image/etcd"
 	"github.com/openshift/origin/pkg/image/registry/imagesecret"
+	"github.com/openshift/origin/pkg/image/registry/imagesignature"
 	"github.com/openshift/origin/pkg/image/registry/imagestream"
 	imagestreametcd "github.com/openshift/origin/pkg/image/registry/imagestream/etcd"
 	"github.com/openshift/origin/pkg/image/registry/imagestreamimage"
 	"github.com/openshift/origin/pkg/image/registry/imagestreamimport"
 	"github.com/openshift/origin/pkg/image/registry/imagestreammapping"
 	"github.com/openshift/origin/pkg/image/registry/imagestreamtag"
+	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	accesstokenetcd "github.com/openshift/origin/pkg/oauth/registry/oauthaccesstoken/etcd"
 	authorizetokenetcd "github.com/openshift/origin/pkg/oauth/registry/oauthauthorizetoken/etcd"
 	clientregistry "github.com/openshift/origin/pkg/oauth/registry/oauthclient"
@@ -74,6 +76,7 @@ import (
 	routeallocationcontroller "github.com/openshift/origin/pkg/route/controller/allocation"
 	routeetcd "github.com/openshift/origin/pkg/route/registry/route/etcd"
 	clusternetworketcd "github.com/openshift/origin/pkg/sdn/registry/clusternetwork/etcd"
+	egressnetworkpolicyetcd "github.com/openshift/origin/pkg/sdn/registry/egressnetworkpolicy/etcd"
 	hostsubnetetcd "github.com/openshift/origin/pkg/sdn/registry/hostsubnet/etcd"
 	netnamespaceetcd "github.com/openshift/origin/pkg/sdn/registry/netnamespace/etcd"
 	"github.com/openshift/origin/pkg/service"
@@ -116,20 +119,17 @@ import (
 )
 
 const (
-	LegacyOpenShiftAPIPrefix  = "/osapi" // TODO: make configurable
-	OpenShiftAPIPrefix        = "/oapi"  // TODO: make configurable
-	KubernetesAPIPrefix       = "/api"   // TODO: make configurable
-	KubernetesAPIGroupPrefix  = "/apis"  // TODO: make configurable
-	OpenShiftAPIV1Beta3       = "v1beta3"
-	OpenShiftAPIV1            = "v1"
-	OpenShiftAPIPrefixV1Beta3 = LegacyOpenShiftAPIPrefix + "/" + OpenShiftAPIV1Beta3
-	OpenShiftAPIPrefixV1      = OpenShiftAPIPrefix + "/" + OpenShiftAPIV1
-	swaggerAPIPrefix          = "/swaggerapi/"
+	LegacyOpenShiftAPIPrefix = "/osapi" // TODO: make configurable
+	OpenShiftAPIPrefix       = "/oapi"  // TODO: make configurable
+	KubernetesAPIPrefix      = "/api"   // TODO: make configurable
+	KubernetesAPIGroupPrefix = "/apis"  // TODO: make configurable
+	OpenShiftAPIV1           = "v1"
+	OpenShiftAPIPrefixV1     = OpenShiftAPIPrefix + "/" + OpenShiftAPIV1
+	swaggerAPIPrefix         = "/swaggerapi/"
 )
 
 var (
-	excludedV1Beta3Types = sets.NewString()
-	excludedV1Types      = excludedV1Beta3Types
+	excludedV1Types = sets.NewString()
 
 	// TODO: correctly solve identifying requests by type
 	longRunningRE = regexp.MustCompile("watch|proxy|logs?|exec|portforward|attach")
@@ -328,8 +328,6 @@ func (c *MasterConfig) InstallProtectedAPI(container *restful.Container) ([]stri
 		switch service.RootPath() {
 		case "/":
 			root = service
-		case OpenShiftAPIPrefixV1Beta3:
-			service.Doc("OpenShift REST API, version v1beta3").ApiVersion("v1beta3")
 		case OpenShiftAPIPrefixV1:
 			service.Doc("OpenShift REST API, version v1").ApiVersion("v1")
 		}
@@ -429,6 +427,8 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 	checkStorageErr(err)
 	clusterNetworkStorage, err := clusternetworketcd.NewREST(c.RESTOptionsGetter)
 	checkStorageErr(err)
+	egressNetworkPolicyStorage, err := egressnetworkpolicyetcd.NewREST(c.RESTOptionsGetter)
+	checkStorageErr(err)
 
 	userStorage, err := useretcd.NewREST(c.RESTOptionsGetter)
 	checkStorageErr(err)
@@ -471,6 +471,7 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 	imageStorage, err := imageetcd.NewREST(c.RESTOptionsGetter)
 	checkStorageErr(err)
 	imageRegistry := image.NewRegistry(imageStorage)
+	imageSignatureStorage := imagesignature.NewREST(c.PrivilegedLoopbackOpenShiftClient.Images())
 	imageStreamLimitVerifier := imageadmission.NewLimitVerifier(c.KubeClient())
 	imageStreamSecretsStorage := imagesecret.NewREST(c.ImageStreamSecretClient())
 	imageStreamStorage, imageStreamStatusStorage, internalImageStreamStorage, err := imagestreametcd.NewREST(c.RESTOptionsGetter, imageapi.DefaultRegistryFunc(defaultRegistryFunc), subjectAccessReviewRegistry, imageStreamLimitVerifier)
@@ -541,7 +542,15 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 	clientStorage, err := clientetcd.NewREST(c.RESTOptionsGetter)
 	checkStorageErr(err)
 	clientRegistry := clientregistry.NewRegistry(clientStorage)
-	combinedOAuthClientGetter := saoauth.NewServiceAccountOAuthClientGetter(c.KubeClient(), c.KubeClient(), clientRegistry)
+
+	// If OAuth is disabled, set the strategy to Deny
+	saAccountGrantMethod := oauthapi.GrantHandlerDeny
+	if c.Options.OAuthConfig != nil {
+		// Otherwise, take the value provided in master-config.yaml
+		saAccountGrantMethod = oauthapi.GrantHandlerType(c.Options.OAuthConfig.GrantConfig.ServiceAccountMethod)
+	}
+
+	combinedOAuthClientGetter := saoauth.NewServiceAccountOAuthClientGetter(c.KubeClient(), c.KubeClient(), clientRegistry, saAccountGrantMethod)
 	authorizeTokenStorage, err := authorizetokenetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter)
 	checkStorageErr(err)
 	accessTokenStorage, err := accesstokenetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter)
@@ -554,6 +563,7 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 
 	storage := map[string]rest.Storage{
 		"images":               imageStorage,
+		"imagesignatures":      imageSignatureStorage,
 		"imageStreams/secrets": imageStreamSecretsStorage,
 		"imageStreams":         imageStreamStorage,
 		"imageStreams/status":  imageStreamStatusStorage,
@@ -581,9 +591,10 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 		"projects":        projectStorage,
 		"projectRequests": projectRequestStorage,
 
-		"hostSubnets":     hostSubnetStorage,
-		"netNamespaces":   netNamespaceStorage,
-		"clusterNetworks": clusterNetworkStorage,
+		"hostSubnets":           hostSubnetStorage,
+		"netNamespaces":         netNamespaceStorage,
+		"clusterNetworks":       clusterNetworkStorage,
+		"egressNetworkPolicies": egressNetworkPolicyStorage,
 
 		"users":                userStorage,
 		"groups":               groupStorage,
@@ -611,7 +622,8 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 		"clusterRoleBindings":   clusterRoleBindingStorage,
 		"clusterRoles":          clusterRoleStorage,
 
-		"clusterResourceQuotas": restInPeace(clusterresourcequotaregistry.NewStorage(c.RESTOptionsGetter)),
+		"clusterResourceQuotas":        restInPeace(clusterresourcequotaregistry.NewStorage(c.RESTOptionsGetter)),
+		"clusterResourceQuotas/status": updateInPeace(clusterresourcequotaregistry.NewStatusStorage(c.RESTOptionsGetter)),
 		"appliedClusterResourceQuotas": appliedclusterresourcequotaregistry.NewREST(
 			c.ClusterQuotaMappingController.GetClusterQuotaMapper(), c.Informers.ClusterResourceQuotas().Lister(), c.Informers.Namespaces().Lister()),
 	}
@@ -721,6 +733,7 @@ func (c *MasterConfig) defaultAPIGroupVersion() *apiserver.APIGroupVersion {
 		Creater:   kapi.Scheme,
 		Typer:     kapi.Scheme,
 		Convertor: kapi.Scheme,
+		Copier:    kapi.Scheme,
 		Linker:    registered.GroupOrDie("").SelfLinker,
 
 		Admit:                       c.AdmissionControl,

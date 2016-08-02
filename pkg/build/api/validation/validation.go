@@ -21,6 +21,7 @@ import (
 	"github.com/openshift/origin/pkg/build/api/v1"
 	buildutil "github.com/openshift/origin/pkg/build/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
+	imageapivalidation "github.com/openshift/origin/pkg/image/api/validation"
 )
 
 // ValidateBuild tests required fields for a Build.
@@ -142,7 +143,7 @@ func validateCommonSpec(spec *buildapi.CommonSpec, fldPath *field.Path) field.Er
 	s := spec.Strategy
 
 	if s.DockerStrategy != nil && s.JenkinsPipelineStrategy == nil && spec.Source.Git == nil && spec.Source.Binary == nil && spec.Source.Dockerfile == nil && spec.Source.Images == nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("source"), spec.Source, "must provide a value for at least one of source, binary, images, or dockerfile"))
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("source"), "", "must provide a value for at least one source input(git, binary, dockerfile, images)."))
 	}
 
 	allErrs = append(allErrs,
@@ -202,7 +203,6 @@ func validateSource(input *buildapi.BuildSource, isCustomStrategy, isDockerStrat
 			allErrs = append(allErrs, validateImageSource(image, fldPath.Child("images").Index(i))...)
 		}
 	}
-
 	if isJenkinsPipelineStrategyFromRepo && input.Git == nil {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("git"), "", "must be set when using Jenkins Pipeline strategy with Jenkinsfile from a git repo"))
 	}
@@ -278,7 +278,7 @@ func validateSecrets(secrets []buildapi.SecretBuildSource, isDockerStrategy bool
 		if len(s.Secret.Name) == 0 {
 			allErrs = append(allErrs, field.Required(fldPath.Index(i).Child("secret"), ""))
 		}
-		if ok, _ := validation.ValidateSecretName(s.Secret.Name, false); !ok {
+		if reasons := validation.ValidateSecretName(s.Secret.Name, false); len(reasons) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Index(i).Child("secret"), s, "must be valid secret name"))
 		}
 		if strings.HasPrefix(path.Clean(s.DestinationDir), "..") {
@@ -348,8 +348,10 @@ func validateToImageReference(reference *kapi.ObjectReference, fldPath *field.Pa
 			allErrs = append(allErrs, field.Required(fldPath.Child("name"), ""))
 		} else if _, _, ok := imageapi.SplitImageStreamTag(name); !ok {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag object references must be in the form <name>:<tag>"))
+		} else if name, _, _ := imageapi.SplitImageStreamTag(name); len(imageapivalidation.ValidateImageStreamName(name, false)) != 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag name contains invalid syntax"))
 		}
-		if len(namespace) != 0 && !kvalidation.IsDNS1123Subdomain(namespace) {
+		if len(namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(namespace)) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), namespace, "namespace must be a valid subdomain"))
 		}
 
@@ -378,9 +380,11 @@ func validateFromImageReference(reference *kapi.ObjectReference, fldPath *field.
 			allErrs = append(allErrs, field.Required(fldPath.Child("name"), ""))
 		} else if _, _, ok := imageapi.SplitImageStreamTag(name); !ok {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag object references must be in the form <name>:<tag>"))
+		} else if name, _, _ := imageapi.SplitImageStreamTag(name); len(imageapivalidation.ValidateImageStreamName(name, false)) != 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag name contains invalid syntax"))
 		}
 
-		if len(namespace) != 0 && !kvalidation.IsDNS1123Subdomain(namespace) {
+		if len(namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(namespace)) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), namespace, "namespace must be a valid subdomain"))
 		}
 
@@ -397,7 +401,7 @@ func validateFromImageReference(reference *kapi.ObjectReference, fldPath *field.
 		if len(name) == 0 {
 			allErrs = append(allErrs, field.Required(fldPath.Child("name"), ""))
 		}
-		if len(namespace) != 0 && !kvalidation.IsDNS1123Subdomain(namespace) {
+		if len(namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(namespace)) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), namespace, "namespace must be a valid subdomain"))
 		}
 	case "":

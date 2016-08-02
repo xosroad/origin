@@ -263,8 +263,15 @@ func (c *AppConfig) validateBuilders(components app.ComponentReferences) error {
 }
 
 func validateEnforcedName(name string) error {
-	if ok, _ := validation.ValidateServiceName(name, false); !ok && !app.IsParameterizableValue(name) {
+	if reasons := validation.ValidateServiceName(name, false); len(reasons) != 0 && !app.IsParameterizableValue(name) {
 		return fmt.Errorf("invalid name: %s. Must be an a lower case alphanumeric (a-z, and 0-9) string with a maximum length of 24 characters, where the first character is a letter (a-z), and the '-' character is allowed anywhere except the first or last character.", name)
+	}
+	return nil
+}
+
+func validateStrategyName(name string) error {
+	if name != "docker" && name != "source" {
+		return fmt.Errorf("invalid strategy: %s. Must be 'docker' or 'source'.", name)
 	}
 	return nil
 }
@@ -593,6 +600,12 @@ func (c *AppConfig) Run() (*AppResult, error) {
 
 	if len(c.Name) > 0 {
 		if err := validateEnforcedName(c.Name); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(c.Strategy) > 0 {
+		if err := validateStrategyName(c.Strategy); err != nil {
 			return nil, err
 		}
 	}

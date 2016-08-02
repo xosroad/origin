@@ -27,17 +27,16 @@ import (
 	kcrypto "k8s.io/kubernetes/pkg/util/crypto"
 	kerrors "k8s.io/kubernetes/pkg/util/errors"
 
-	"github.com/openshift/openshift-sdn/plugins/osdn"
-	osdnapi "github.com/openshift/openshift-sdn/plugins/osdn/api"
 	osclient "github.com/openshift/origin/pkg/client"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
-	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	cmdflags "github.com/openshift/origin/pkg/cmd/util/flags"
 	"github.com/openshift/origin/pkg/cmd/util/variable"
 	"github.com/openshift/origin/pkg/dns"
 	sdnapi "github.com/openshift/origin/pkg/sdn/api"
+	sdnplugin "github.com/openshift/origin/pkg/sdn/plugin"
+	sdnpluginapi "github.com/openshift/origin/pkg/sdn/plugin/api"
 )
 
 // NodeConfig represents the required parameters to start the OpenShift node
@@ -76,22 +75,22 @@ type NodeConfig struct {
 	DNSServer *dns.Server
 
 	// SDNPlugin is an optional SDN plugin
-	SDNPlugin osdnapi.OsdnNodePlugin
+	SDNPlugin sdnpluginapi.OsdnNodePlugin
 	// EndpointsFilterer is an optional endpoints filterer
-	FilteringEndpointsHandler osdnapi.FilteringEndpointsConfigHandler
+	FilteringEndpointsHandler sdnpluginapi.FilteringEndpointsConfigHandler
 }
 
 func BuildKubernetesNodeConfig(options configapi.NodeConfig, enableProxy, enableDNS bool) (*NodeConfig, error) {
-	originClient, osClientConfig, err := configapi.GetOpenShiftClient(options.MasterKubeConfig)
+	originClient, _, err := configapi.GetOpenShiftClient(options.MasterKubeConfig, options.MasterClientConnectionOverrides)
 	if err != nil {
 		return nil, err
 	}
-	kubeClient, _, err := configapi.GetKubeClient(options.MasterKubeConfig)
+	kubeClient, _, err := configapi.GetKubeClient(options.MasterKubeConfig, options.MasterClientConnectionOverrides)
 	if err != nil {
 		return nil, err
 	}
 	// Make a separate client for event reporting, to avoid event QPS blocking node calls
-	eventClient, _, err := configapi.GetKubeClient(options.MasterKubeConfig)
+	eventClient, _, err := configapi.GetKubeClient(options.MasterKubeConfig, options.MasterClientConnectionOverrides)
 	if err != nil {
 		return nil, err
 	}
@@ -165,13 +164,14 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig, enableProxy, enable
 	server.PodInfraContainerImage = imageTemplate.ExpandOrDie("pod")
 	server.CPUCFSQuota = true // enable cpu cfs quota enforcement by default
 	server.MaxPods = 110
-	server.SerializeImagePulls = false // disable serial image pulls by default
+	server.SerializeImagePulls = false          // disable serialized image pulls by default
+	server.EnableControllerAttachDetach = false // stay consistent with existing config, but admins should enable it
 	if enableDNS {
 		// if we are running local DNS, skydns will load the default recursive nameservers for us
 		server.ResolverConfig = ""
 	}
 
-	if osdn.IsOpenShiftNetworkPlugin(server.NetworkPluginName) {
+	if sdnplugin.IsOpenShiftNetworkPlugin(server.NetworkPluginName) {
 		// set defaults for openshift-sdn
 		server.HairpinMode = componentconfig.HairpinNone
 		server.ConfigureCBR0 = false
@@ -212,7 +212,7 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig, enableProxy, enable
 	if err != nil {
 		return nil, err
 	}
-	authn, err := newAuthenticator(clientCAs, clientcmd.AnonymousClientConfig(osClientConfig), authnTTL, options.AuthConfig.AuthenticationCacheSize)
+	authn, err := newAuthenticator(cfg.KubeClient.Authentication(), clientCAs, authnTTL, options.AuthConfig.AuthenticationCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -261,21 +261,25 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig, enableProxy, enable
 		cfg.TLSOptions = nil
 	}
 
-	// Prepare cloud provider
-	cloud, err := cloudprovider.InitCloudProvider(server.CloudProvider, server.CloudConfigFile)
-	if err != nil {
-		return nil, err
+	if server.CloudProvider == kubeletoptions.AutoDetectCloudProvider {
+		cfg.AutoDetectCloudProvider = true
+	} else {
+		// Prepare cloud provider
+		cloud, err := cloudprovider.InitCloudProvider(server.CloudProvider, server.CloudConfigFile)
+		if err != nil {
+			return nil, err
+		}
+		if cloud != nil {
+			glog.V(2).Infof("Successfully initialized cloud provider: %q from the config file: %q\n", server.CloudProvider, server.CloudConfigFile)
+		}
+		cfg.Cloud = cloud
 	}
-	if cloud != nil {
-		glog.V(2).Infof("Successfully initialized cloud provider: %q from the config file: %q\n", server.CloudProvider, server.CloudConfigFile)
-	}
-	cfg.Cloud = cloud
 
 	iptablesSyncPeriod, err := time.ParseDuration(options.IPTablesSyncPeriod)
 	if err != nil {
 		return nil, fmt.Errorf("Cannot parse the provided ip-tables sync period (%s) : %v", options.IPTablesSyncPeriod, err)
 	}
-	sdnPlugin, err := osdn.NewNodePlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient, options.NodeName, options.NodeIP, iptablesSyncPeriod, options.NetworkConfig.MTU)
+	sdnPlugin, err := sdnplugin.NewNodePlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient, options.NodeName, options.NodeIP, iptablesSyncPeriod, options.NetworkConfig.MTU)
 	if err != nil {
 		return nil, fmt.Errorf("SDN initialization failed: %v", err)
 	}
@@ -283,7 +287,7 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig, enableProxy, enable
 		cfg.NetworkPlugins = append(cfg.NetworkPlugins, sdnPlugin)
 	}
 
-	endpointFilter, err := osdn.NewProxyPlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient)
+	endpointFilter, err := sdnplugin.NewProxyPlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient)
 	if err != nil {
 		return nil, fmt.Errorf("SDN proxy initialization failed: %v", err)
 	}
@@ -413,7 +417,7 @@ func buildKubeProxyConfig(options configapi.NodeConfig) (*proxyoptions.ProxyServ
 }
 
 func validateAndGetNetworkPluginName(originClient *osclient.Client, pluginName string) (string, error) {
-	if osdn.IsOpenShiftNetworkPlugin(pluginName) {
+	if sdnplugin.IsOpenShiftNetworkPlugin(pluginName) {
 		// Detect any plugin mismatches between node and master
 		clusterNetwork, err := originClient.ClusterNetwork().Get(sdnapi.ClusterNetworkDefault)
 		if kerrs.IsNotFound(err) {

@@ -11,7 +11,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -52,6 +52,9 @@ type ProjectStatusDescriber struct {
 	Server  string
 	Suggest bool
 
+	// root command used when calling this command
+	CommandBaseName string
+
 	LogsCommandName             string
 	SecurityPolicyCommandFormat string
 	SetProbeCommandName         string
@@ -66,7 +69,7 @@ func (d *ProjectStatusDescriber) MakeGraph(namespace string) (osgraph.Graph, set
 		&secretLoader{namespace: namespace, lister: d.K},
 		&rcLoader{namespace: namespace, lister: d.K},
 		&podLoader{namespace: namespace, lister: d.K},
-		&horizontalPodAutoscalerLoader{namespace: namespace, lister: d.K.Extensions()},
+		&horizontalPodAutoscalerLoader{namespace: namespace, lister: d.K.Autoscaling()},
 		// TODO check swagger for feature enablement and selectively add bcLoader and buildLoader
 		// then remove errors.TolerateNotFoundError method.
 		&bcLoader{namespace: namespace, lister: d.C},
@@ -311,20 +314,20 @@ func (d *ProjectStatusDescriber) Describe(namespace, name string) (string, error
 
 		switch {
 		case !d.Suggest && len(errorMarkers) > 0 && len(warningMarkers) > 0:
-			fmt.Fprintf(out, "%s and %s identified, use 'oc status -v' to see details.\n", errors, warnings)
+			fmt.Fprintf(out, "%s and %s identified, use '%[3]s status -v' to see details.\n", errors, warnings, d.CommandBaseName)
 
 		case !d.Suggest && len(errorMarkers) > 0 && errorSuggestions > 0:
-			fmt.Fprintf(out, "%s identified, use 'oc status -v' to see details.\n", errors)
+			fmt.Fprintf(out, "%s identified, use '%[2]s status -v' to see details.\n", errors, d.CommandBaseName)
 
 		case !d.Suggest && len(warningMarkers) > 0:
-			fmt.Fprintf(out, "%s identified, use 'oc status -v' to see details.\n", warnings)
+			fmt.Fprintf(out, "%s identified, use '%[2]s status -v' to see details.\n", warnings, d.CommandBaseName)
 
 		case (len(services) == 0) && (len(standaloneDCs) == 0) && (len(standaloneImages) == 0):
 			fmt.Fprintln(out, "You have no services, deployment configs, or build configs.")
-			fmt.Fprintln(out, "Run 'oc new-app' to create an application.")
+			fmt.Fprintf(out, "Run '%[1]s new-app' to create an application.\n", d.CommandBaseName)
 
 		default:
-			fmt.Fprintln(out, "View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.")
+			fmt.Fprintf(out, "View details with '%[1]s describe <resource>/<name>' or list everything with '%[1]s get all'.\n", d.CommandBaseName)
 		}
 
 		return nil
@@ -1188,7 +1191,7 @@ func (l *podLoader) AddToGraph(g osgraph.Graph) error {
 type horizontalPodAutoscalerLoader struct {
 	namespace string
 	lister    kclient.HorizontalPodAutoscalersNamespacer
-	items     []extensions.HorizontalPodAutoscaler
+	items     []autoscaling.HorizontalPodAutoscaler
 }
 
 func (l *horizontalPodAutoscalerLoader) Load() error {

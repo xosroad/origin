@@ -112,7 +112,7 @@ func TestPodNodeConstraints(t *testing.T) {
 			checkAdmitError(t, err, expectedError, errPrefix)
 			continue
 		}
-		attrs := admission.NewAttributesRecord(tc.resource, kapi.Kind("Pod").WithVersion("version"), ns, "test", kapi.Resource("pods").WithVersion("version"), "", admission.Create, tc.userinfo)
+		attrs := admission.NewAttributesRecord(tc.resource, nil, kapi.Kind("Pod").WithVersion("version"), ns, "test", kapi.Resource("pods").WithVersion("version"), "", admission.Create, tc.userinfo)
 		if tc.expectedErrorMsg != "" {
 			expectedError = admission.NewForbidden(attrs, fmt.Errorf(tc.expectedErrorMsg))
 		}
@@ -132,7 +132,7 @@ func TestPodNodeConstraintsPodUpdate(t *testing.T) {
 		checkAdmitError(t, err, expectedError, errPrefix)
 		return
 	}
-	attrs := admission.NewAttributesRecord(nodeNamePod(), kapi.Kind("Pod").WithVersion("version"), ns, "test", kapi.Resource("pods").WithVersion("version"), "", admission.Update, serviceaccount.UserInfo("", "", ""))
+	attrs := admission.NewAttributesRecord(nodeNamePod(), nodeNamePod(), kapi.Kind("Pod").WithVersion("version"), ns, "test", kapi.Resource("pods").WithVersion("version"), "", admission.Update, serviceaccount.UserInfo("", "", ""))
 	err = prc.Admit(attrs)
 	checkAdmitError(t, err, expectedError, errPrefix)
 }
@@ -148,7 +148,7 @@ func TestPodNodeConstraintsNonHandledResources(t *testing.T) {
 		checkAdmitError(t, err, expectedError, errPrefix)
 		return
 	}
-	attrs := admission.NewAttributesRecord(resourceQuota(), kapi.Kind("ResourceQuota").WithVersion("version"), ns, "test", kapi.Resource("resourcequotas").WithVersion("version"), "", admission.Create, serviceaccount.UserInfo("", "", ""))
+	attrs := admission.NewAttributesRecord(resourceQuota(), nil, kapi.Kind("ResourceQuota").WithVersion("version"), ns, "test", kapi.Resource("resourcequotas").WithVersion("version"), "", admission.Create, serviceaccount.UserInfo("", "", ""))
 	err = prc.Admit(attrs)
 	checkAdmitError(t, err, expectedError, errPrefix)
 }
@@ -272,7 +272,7 @@ func TestPodNodeConstraintsResources(t *testing.T) {
 						checkAdmitError(t, err, expectedError, errPrefix)
 						continue
 					}
-					attrs := admission.NewAttributesRecord(tr.resource(tp.nodeselector), tr.kind.WithVersion("version"), ns, "test", tr.groupresource.WithVersion("version"), "", top.operation, tc.userinfo)
+					attrs := admission.NewAttributesRecord(tr.resource(tp.nodeselector), nil, tr.kind.WithVersion("version"), ns, "test", tr.groupresource.WithVersion("version"), "", top.operation, tc.userinfo)
 					if tp.expectedErrorMsg != "" {
 						expectedError = admission.NewForbidden(attrs, fmt.Errorf(tp.expectedErrorMsg))
 					}
@@ -391,19 +391,19 @@ func deploymentConfig(setNodeSelector bool) runtime.Object {
 
 func podSecurityPolicySubjectReview(setNodeSelector bool) runtime.Object {
 	pspsr := &securityapi.PodSecurityPolicySubjectReview{}
-	pspsr.Spec.PodSpec = *podSpec(setNodeSelector)
+	pspsr.Spec.Template.Spec = *podSpec(setNodeSelector)
 	return pspsr
 }
 
 func podSecurityPolicySelfSubjectReview(setNodeSelector bool) runtime.Object {
 	pspssr := &securityapi.PodSecurityPolicySelfSubjectReview{}
-	pspssr.Spec.PodSpec = *podSpec(setNodeSelector)
+	pspssr.Spec.Template.Spec = *podSpec(setNodeSelector)
 	return pspssr
 }
 
 func podSecurityPolicyReview(setNodeSelector bool) runtime.Object {
 	pspr := &securityapi.PodSecurityPolicyReview{}
-	pspr.Spec.PodSpec = *podSpec(setNodeSelector)
+	pspr.Spec.Template.Spec = *podSpec(setNodeSelector)
 	return pspr
 }
 
@@ -430,7 +430,7 @@ func fakeAuthorizer(t *testing.T) authorizer.Authorizer {
 	}
 }
 
-func (a *fakeTestAuthorizer) Authorize(ctx kapi.Context, passedAttributes authorizer.AuthorizationAttributes) (bool, string, error) {
+func (a *fakeTestAuthorizer) Authorize(ctx kapi.Context, passedAttributes authorizer.Action) (bool, string, error) {
 	a.t.Logf("Authorize: ctx: %#v", ctx)
 	ui, ok := kapi.UserFrom(ctx)
 	if !ok {
@@ -444,7 +444,7 @@ func (a *fakeTestAuthorizer) Authorize(ctx kapi.Context, passedAttributes author
 	return false, "", nil
 }
 
-func (a *fakeTestAuthorizer) GetAllowedSubjects(ctx kapi.Context, attributes authorizer.AuthorizationAttributes) (sets.String, sets.String, error) {
+func (a *fakeTestAuthorizer) GetAllowedSubjects(ctx kapi.Context, attributes authorizer.Action) (sets.String, sets.String, error) {
 	return nil, nil, nil
 }
 

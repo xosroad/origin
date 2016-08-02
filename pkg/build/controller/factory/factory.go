@@ -73,7 +73,7 @@ type BuildControllerFactory struct {
 
 // Create constructs a BuildController
 func (factory *BuildControllerFactory) Create() controller.RunnableController {
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&buildLW{client: factory.OSClient}, &buildapi.Build{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -95,9 +95,9 @@ func (factory *BuildControllerFactory) Create() controller.RunnableController {
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			limitedLogAndRetry(factory.BuildUpdater, 30*time.Minute),
 			flowcontrol.NewTokenBucketRateLimiter(1, 10)),
@@ -134,9 +134,9 @@ func (factory *BuildControllerFactory) CreateDeleteController() controller.Runna
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			controller.RetryNever,
 			flowcontrol.NewTokenBucketRateLimiter(1, 10)),
@@ -190,7 +190,7 @@ func (factory *BuildPodControllerFactory) Create() controller.RunnableController
 	factory.buildStore = cache.NewStore(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&buildLW{client: factory.OSClient}, &buildapi.Build{}, factory.buildStore, 2*time.Minute).RunUntil(factory.Stop)
 
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&podLW{client: factory.KubeClient}, &kapi.Pod{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	client := ControllerClient{factory.KubeClient, factory.OSClient}
@@ -202,9 +202,9 @@ func (factory *BuildPodControllerFactory) Create() controller.RunnableController
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			retryFunc("BuildPod", nil),
 			flowcontrol.NewTokenBucketRateLimiter(1, 10)),
@@ -251,9 +251,9 @@ func (factory *BuildPodControllerFactory) CreateDeleteController() controller.Ru
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			controller.RetryNever,
 			flowcontrol.NewTokenBucketRateLimiter(1, 10)),
@@ -281,7 +281,7 @@ type ImageChangeControllerFactory struct {
 // Create creates a new ImageChangeController which is used to trigger builds when a new
 // image is available
 func (factory *ImageChangeControllerFactory) Create() controller.RunnableController {
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&imageStreamLW{factory.Client}, &imageapi.ImageStream{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
@@ -293,9 +293,9 @@ func (factory *ImageChangeControllerFactory) Create() controller.RunnableControl
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			retryFunc("ImageStream update", func(err error) bool {
 				_, isFatal := err.(buildcontroller.ImageChangeControllerFatalError)
@@ -320,7 +320,7 @@ type BuildConfigControllerFactory struct {
 
 // Create creates a new ConfigChangeController which is used to trigger builds on creation
 func (factory *BuildConfigControllerFactory) Create() controller.RunnableController {
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&buildConfigLW{client: factory.Client}, &buildapi.BuildConfig{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -332,9 +332,9 @@ func (factory *BuildConfigControllerFactory) Create() controller.RunnableControl
 	}
 
 	return &controller.RetryController{
-		Queue: controller.NewQueueWrapper(queue),
+		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
-			controller.NewQueueWrapper(queue),
+			queue,
 			cache.MetaNamespaceKeyFunc,
 			retryFunc("BuildConfig", buildcontroller.IsFatal),
 			flowcontrol.NewTokenBucketRateLimiter(1, 10)),

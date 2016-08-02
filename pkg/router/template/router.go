@@ -187,14 +187,14 @@ func matchValues(s string, allowedValues ...string) bool {
 	return false
 }
 
-func matchString(pattern, s string) bool {
-	glog.V(4).Infof("Matchstring called with %s and %s", pattern, s)
-	status, err := regexp.MatchString(pattern, s)
+func matchPattern(pattern, s string) bool {
+	glog.V(4).Infof("matchPattern called with %s and %s", pattern, s)
+	status, err := regexp.MatchString("^("+pattern+")$", s)
 	if err == nil {
-		glog.V(4).Infof("Matchstring returning status: %v", status)
+		glog.V(4).Infof("matchPattern returning status: %v", status)
 		return status
 	}
-	glog.Errorf("Error with regex pattern in call to matchString: %v", err)
+	glog.Errorf("Error with regex pattern in call to matchPattern: %v", err)
 	return false
 }
 
@@ -654,7 +654,7 @@ func (r *templateRouter) shouldWriteCerts(cfg *ServiceAliasConfig) bool {
 // commit/reload should be skipped.
 func (r *templateRouter) SetSkipCommit(skipCommit bool) {
 	if r.skipCommit != skipCommit {
-		glog.V(4).Infof("Updating skip commit to: %s", skipCommit)
+		glog.V(4).Infof("Updating skip commit to: %t", skipCommit)
 		r.skipCommit = skipCommit
 	}
 }

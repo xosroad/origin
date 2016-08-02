@@ -1,6 +1,8 @@
 package validation
 
 import (
+	"strings"
+
 	kapivalidation "k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
@@ -16,7 +18,7 @@ func ValidatePodSecurityPolicySubjectReview(podSecurityPolicySubjectReview *secu
 
 func validatePodSecurityPolicySubjectReviewSpec(podSecurityPolicySubjectReviewSpec *securityapi.PodSecurityPolicySubjectReviewSpec, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	allErrs = append(allErrs, kapivalidation.ValidatePodSpec(&podSecurityPolicySubjectReviewSpec.PodSpec, fldPath.Child("podSpec"))...)
+	allErrs = append(allErrs, kapivalidation.ValidatePodSpec(&podSecurityPolicySubjectReviewSpec.Template.Spec, fldPath.Child("podSpec"))...)
 	return allErrs
 }
 
@@ -29,7 +31,7 @@ func ValidatePodSecurityPolicySelfSubjectReview(podSecurityPolicySelfSubjectRevi
 
 func validatePodSecurityPolicySelfSubjectReviewSpec(podSecurityPolicySelfSubjectReviewSpec *securityapi.PodSecurityPolicySelfSubjectReviewSpec, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	allErrs = append(allErrs, kapivalidation.ValidatePodSpec(&podSecurityPolicySelfSubjectReviewSpec.PodSpec, fldPath.Child("podSpec"))...)
+	allErrs = append(allErrs, kapivalidation.ValidatePodSpec(&podSecurityPolicySelfSubjectReviewSpec.Template.Spec, fldPath.Child("podSpec"))...)
 	return allErrs
 }
 
@@ -42,7 +44,7 @@ func ValidatePodSecurityPolicyReview(podSecurityPolicyReview *securityapi.PodSec
 
 func validatePodSecurityPolicyReviewSpec(podSecurityPolicyReviewSpec *securityapi.PodSecurityPolicyReviewSpec, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	allErrs = append(allErrs, kapivalidation.ValidatePodSpec(&podSecurityPolicyReviewSpec.PodSpec, fldPath.Child("podSpec"))...)
+	allErrs = append(allErrs, kapivalidation.ValidatePodSpec(&podSecurityPolicyReviewSpec.Template.Spec, fldPath.Child("podSpec"))...)
 	allErrs = append(allErrs, validateServiceAccountNames(podSecurityPolicyReviewSpec.ServiceAccountNames, fldPath.Child("serviceAccountNames"))...)
 	return allErrs
 }
@@ -55,8 +57,8 @@ func validateServiceAccountNames(serviceAccountNames []string, fldPath *field.Pa
 		case len(sa) == 0:
 			allErrs = append(allErrs, field.Invalid(idxPath, sa, ""))
 		case len(sa) > 0:
-			if ok, msg := kapivalidation.ValidateServiceAccountName(sa, false); !ok {
-				allErrs = append(allErrs, field.Invalid(idxPath, sa, msg))
+			if reasons := kapivalidation.ValidateServiceAccountName(sa, false); len(reasons) != 0 {
+				allErrs = append(allErrs, field.Invalid(idxPath, sa, strings.Join(reasons, ", ")))
 			}
 		}
 	}

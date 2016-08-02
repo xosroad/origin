@@ -8,12 +8,13 @@ import (
 	"github.com/golang/glog"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/errors"
+	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
+	kutilerrors "k8s.io/kubernetes/pkg/util/errors"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 
@@ -142,11 +143,17 @@ func (c *DeploymentConfigController) Handle(config *deployapi.DeploymentConfig) 
 		if !deployutil.IsTerminatedDeployment(latestDeployment) {
 			return c.updateStatus(config, existingDeployments)
 		}
+
 		return c.reconcileDeployments(existingDeployments, config)
 	}
 	// If the config is paused we shouldn't create new deployments for it.
-	// TODO: Make sure cleanup policy will work for paused configs.
 	if config.Spec.Paused {
+		// in order for revision history limit cleanup to work for paused
+		// deployments, we need to trigger it here
+		if err := c.cleanupOldDeployments(existingDeployments, config); err != nil {
+			c.recorder.Eventf(config, kapi.EventTypeWarning, "DeploymentCleanupFailed", "Couldn't clean up deployments: %v", err)
+		}
+
 		return c.updateStatus(config, existingDeployments)
 	}
 	// No deployments are running and the latest deployment doesn't exist, so
@@ -159,13 +166,20 @@ func (c *DeploymentConfigController) Handle(config *deployapi.DeploymentConfig) 
 	if err != nil {
 		// If the deployment was already created, just move on. The cache could be
 		// stale, or another process could have already handled this update.
-		if errors.IsAlreadyExists(err) {
+		if kapierrors.IsAlreadyExists(err) {
 			return c.updateStatus(config, existingDeployments)
 		}
 		c.recorder.Eventf(config, kapi.EventTypeWarning, "DeploymentCreationFailed", "Couldn't deploy version %d: %s", config.Status.LatestVersion, err)
 		return fmt.Errorf("couldn't create deployment for deployment config %s: %v", deployutil.LabelForDeploymentConfig(config), err)
 	}
 	c.recorder.Eventf(config, kapi.EventTypeNormal, "DeploymentCreated", "Created new deployment %q for version %d", created.Name, config.Status.LatestVersion)
+
+	// As we've just created a new deployment, we need to make sure to clean
+	// up old deployments if we have reached our deployment history quota
+	existingDeployments = append(existingDeployments, *created)
+	if err := c.cleanupOldDeployments(existingDeployments, config); err != nil {
+		c.recorder.Eventf(config, kapi.EventTypeWarning, "DeploymentCleanupFailed", "Couldn't clean up deployments: %v", err)
+	}
 
 	return c.updateStatus(config, existingDeployments)
 }
@@ -306,6 +320,12 @@ func (c *DeploymentConfigController) reconcileDeployments(existingDeployments []
 		updatedDeployments = append(updatedDeployments, toAppend)
 	}
 
+	// As the deployment configuration has changed, we need to make sure to clean
+	// up old deployments if we have now reached our deployment history quota
+	if err := c.cleanupOldDeployments(existingDeployments, config); err != nil {
+		c.recorder.Eventf(config, kapi.EventTypeWarning, "DeploymentCleanupFailed", "Couldn't clean up deployments: %v", err)
+	}
+
 	return c.updateStatus(config, updatedDeployments)
 }
 
@@ -332,14 +352,12 @@ func (c *DeploymentConfigController) updateStatus(config *deployapi.DeploymentCo
 }
 
 func (c *DeploymentConfigController) calculateStatus(config deployapi.DeploymentConfig, deployments []kapi.ReplicationController) (deployapi.DeploymentConfigStatus, error) {
-	// TODO: Implement MinReadySeconds for deploymentconfigs: https://github.com/openshift/origin/issues/7114
-	minReadSeconds := int32(0)
 	selector := labels.Set(config.Spec.Selector).AsSelector()
 	pods, err := c.podStore.Pods(config.Namespace).List(selector)
 	if err != nil {
 		return config.Status, err
 	}
-	available := deployutil.GetAvailablePods(pods.Items, minReadSeconds)
+	available := deployutil.GetAvailablePods(pods.Items, config.Spec.MinReadySeconds)
 
 	// UpdatedReplicas represents the replicas that use the deployment config template which means
 	// we should inform about the replicas of the latest deployment and not the active.
@@ -367,18 +385,54 @@ func (c *DeploymentConfigController) calculateStatus(config deployapi.Deployment
 
 func (c *DeploymentConfigController) handleErr(err error, key interface{}) {
 	if err == nil {
+		c.queue.Forget(key)
 		return
 	}
+
 	if _, isFatal := err.(fatalError); isFatal {
 		utilruntime.HandleError(err)
 		c.queue.Forget(key)
 		return
 	}
 
-	if c.queue.NumRequeues(key) < 10 {
+	if c.queue.NumRequeues(key) < MaxRetries {
+		glog.V(2).Infof("Error syncing deployment config %v: %v", key, err)
 		c.queue.AddRateLimited(key)
-	} else {
-		glog.V(2).Infof(err.Error())
-		c.queue.Forget(key)
+		return
 	}
+
+	utilruntime.HandleError(err)
+	c.queue.Forget(key)
+}
+
+// cleanupOldDeployments deletes old replication controller deployments if their quota has been reached
+func (c *DeploymentConfigController) cleanupOldDeployments(existingDeployments []kapi.ReplicationController, deploymentConfig *deployapi.DeploymentConfig) error {
+	if deploymentConfig.Spec.RevisionHistoryLimit == nil {
+		// there is no past deplyoment quota set
+		return nil
+	}
+
+	prunableDeployments := deployutil.DeploymentsForCleanup(deploymentConfig, existingDeployments)
+	if len(prunableDeployments) <= int(*deploymentConfig.Spec.RevisionHistoryLimit) {
+		// the past deployment quota has not been exceeded
+		return nil
+	}
+
+	deletionErrors := []error{}
+	for i := 0; i < (len(prunableDeployments) - int(*deploymentConfig.Spec.RevisionHistoryLimit)); i++ {
+		deployment := prunableDeployments[i]
+		if deployment.Spec.Replicas != 0 {
+			// we do not want to clobber active older deployments, but we *do* want them to count
+			// against the quota so that they will be pruned when they're scaled down
+			continue
+		}
+
+		err := c.rn.ReplicationControllers(deployment.Namespace).Delete(deployment.Name)
+		if err != nil && !kapierrors.IsNotFound(err) {
+			glog.V(2).Infof("Failed deleting old Replication Controller %q for Deployment Config %q: %v", deployment.Name, deploymentConfig.Name, err)
+			deletionErrors = append(deletionErrors, err)
+		}
+	}
+
+	return kutilerrors.NewAggregate(deletionErrors)
 }

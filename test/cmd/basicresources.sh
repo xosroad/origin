@@ -14,8 +14,13 @@ trap os::test::junit::reconcile_output EXIT
   set +e
   oc delete all,templates,secrets,pods,jobs --all
   oc delete image v1-image
+  oc delete group patch-group
   exit 0
 ) &>/dev/null
+
+function escape_regex() {
+  sed 's/[]\.|$(){}?+*^]/\\&/g' <<< "$*"
+}
 
 os::test::junit::declare_suite_start "cmd/basicresources"
 # This test validates basic resource retrieval and command interaction
@@ -24,16 +29,20 @@ os::test::junit::declare_suite_start "cmd/basicresources/versionreporting"
 # Test to make sure that we're reporting the correct version information from endpoints and the correct
 # User-Agent information from our clients regardless of which resources they're trying to access
 os::build::get_version_vars
-OS_GIT_VERSION_TO_MICRO=${OS_GIT_VERSION%%-*}
-KUBE_GIT_VERSION_TO_MICRO=${KUBE_GIT_VERSION%%-*}
-os::cmd::expect_success_and_text 'oc version' "oc ${OS_GIT_VERSION_TO_MICRO}"
-os::cmd::expect_success_and_text 'oc version' "kubernetes ${KUBE_GIT_VERSION}"
-os::cmd::expect_success_and_text 'openshift version' "openshift ${OS_GIT_VERSION_TO_MICRO}"
-os::cmd::expect_success_and_text 'openshift version' "kubernetes ${KUBE_GIT_VERSION}"
-os::cmd::expect_success_and_text 'curl -k ${API_SCHEME}://${API_HOST}:${API_PORT}/version' "${KUBE_GIT_VERSION}"
-if [[ "${KUBE_GIT_VERSION_TO_MICRO}" != "${OS_GIT_VERSION_TO_MICRO}" ]]; then
-  os::cmd::expect_success_and_not_text 'curl -k ${API_SCHEME}://${API_HOST}:${API_PORT}/version' "${OS_GIT_VERSION_TO_MICRO}"
-fi
+os_git_regex="$( escape_regex "${OS_GIT_VERSION%%-*}" )"
+kube_git_regex="$( escape_regex "${KUBE_GIT_VERSION%%-*}" )"
+etcd_git_regex="$( escape_regex "${ETCD_GIT_VERSION%%-*}" )"
+os::cmd::expect_success_and_text 'oc version' "oc ${os_git_regex}"
+os::cmd::expect_success_and_text 'oc version' "kubernetes ${kube_git_regex}"
+os::cmd::expect_success_and_text 'oc version' "features: Basic-Auth"
+os::cmd::expect_success_and_text 'openshift version' "openshift ${os_git_regex}"
+os::cmd::expect_success_and_text 'openshift version' "kubernetes ${kube_git_regex}"
+os::cmd::expect_success_and_text 'openshift version' "etcd ${etcd_git_regex}"
+os::cmd::expect_success_and_text "curl -k '${API_SCHEME}://${API_HOST}:${API_PORT}/version'" "${kube_git_regex}"
+os::cmd::expect_success_and_text "curl -k '${API_SCHEME}://${API_HOST}:${API_PORT}/version/openshift'" "${os_git_regex}"
+os::cmd::expect_success_and_not_text "curl -k '${API_SCHEME}://${API_HOST}:${API_PORT}/version'" "${OS_GIT_COMMIT}"
+os::cmd::expect_success_and_not_text "curl -k '${API_SCHEME}://${API_HOST}:${API_PORT}/version/openshift'" "${KUBE_GIT_COMMIT}"
+
 # variants I know I have to worry about
 # 1. oc (kube and openshift resources)
 # 2. openshift kubectl (kube and openshift resources)
@@ -42,26 +51,34 @@ fi
 
 # example User-Agent: oc/v1.2.0 (linux/amd64) kubernetes/bc4550d
 # this is probably broken and should be `oc/<oc version>... openshift/...`
-os::cmd::expect_success_and_text 'oc get pods --loglevel=7  2>&1 | grep -A4 "pods" | grep User-Agent' "oc/${KUBE_GIT_VERSION_TO_MICRO} .* kubernetes/"
+os::cmd::expect_success_and_text 'oc get pods --loglevel=7  2>&1 | grep -A4 "pods" | grep User-Agent' "oc/${kube_git_regex} .* kubernetes/"
 # example User-Agent: oc/v1.1.3 (linux/amd64) openshift/b348c2f
-os::cmd::expect_success_and_text 'oc get dc --loglevel=7  2>&1 | grep -A4 "deploymentconfig" | grep User-Agent' "oc/${OS_GIT_VERSION_TO_MICRO} .* openshift/"
+os::cmd::expect_success_and_text 'oc get dc --loglevel=7  2>&1 | grep -A4 "deploymentconfig" | grep User-Agent' "oc/${os_git_regex} .* openshift/"
 # example User-Agent: openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d
 # this is probably broken and should be `kubectl/<kube version> kubernetes/...`
-os::cmd::expect_success_and_text 'openshift kubectl get pods --loglevel=7  2>&1 | grep -A4 "pods" | grep User-Agent' "openshift/${KUBE_GIT_VERSION_TO_MICRO} .* kubernetes/"
+os::cmd::expect_success_and_text 'openshift kubectl get pods --loglevel=7  2>&1 | grep -A4 "pods" | grep User-Agent' "openshift/${kube_git_regex} .* kubernetes/"
 # example User-Agent: openshift/v1.1.3 (linux/amd64) openshift/b348c2f
 # this is probably broken and should be `kubectl/<kube version> openshift/...`
-os::cmd::expect_success_and_text 'openshift kubectl get dc --loglevel=7  2>&1 | grep -A4 "deploymentconfig" | grep User-Agent' "openshift/${OS_GIT_VERSION_TO_MICRO} .* openshift/"
+os::cmd::expect_success_and_text 'openshift kubectl get dc --loglevel=7  2>&1 | grep -A4 "deploymentconfig" | grep User-Agent' "openshift/${os_git_regex} .* openshift/"
 # example User-Agent: oadm/v1.2.0 (linux/amd64) kubernetes/bc4550d
 # this is probably broken and should be `oadm/<oc version>... openshift/...`
-os::cmd::expect_success_and_text 'oadm policy reconcile-sccs --loglevel=7  2>&1 | grep -A4 "securitycontextconstraints" | grep User-Agent' "oadm/${KUBE_GIT_VERSION_TO_MICRO} .* kubernetes/"
+os::cmd::expect_success_and_text 'oadm policy reconcile-sccs --loglevel=7  2>&1 | grep -A4 "securitycontextconstraints" | grep User-Agent' "oadm/${kube_git_regex} .* kubernetes/"
 # example User-Agent: oadm/v1.1.3 (linux/amd64) openshift/b348c2f
-os::cmd::expect_success_and_text 'oadm policy who-can get pods --loglevel=7  2>&1 | grep -A4 "localresourceaccessreviews" | grep User-Agent' "oadm/${OS_GIT_VERSION_TO_MICRO} .* openshift/"
+os::cmd::expect_success_and_text 'oadm policy who-can get pods --loglevel=7  2>&1 | grep -A4 "localresourceaccessreviews" | grep User-Agent' "oadm/${os_git_regex} .* openshift/"
 # example User-Agent: openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d
 # this is probably broken and should be `oc/<oc version>... openshift/...`
-os::cmd::expect_success_and_text 'openshift cli get pods --loglevel=7  2>&1 | grep -A4 "pods" | grep User-Agent' "openshift/${KUBE_GIT_VERSION_TO_MICRO} .* kubernetes/"
+os::cmd::expect_success_and_text 'openshift cli get pods --loglevel=7  2>&1 | grep -A4 "pods" | grep User-Agent' "openshift/${kube_git_regex} .* kubernetes/"
 # example User-Agent: openshift/v1.1.3 (linux/amd64) openshift/b348c2f
-os::cmd::expect_success_and_text 'openshift cli get dc --loglevel=7  2>&1 | grep -A4 "deploymentconfig" | grep User-Agent' "openshift/${OS_GIT_VERSION_TO_MICRO} .* openshift/"
+os::cmd::expect_success_and_text 'openshift cli get dc --loglevel=7  2>&1 | grep -A4 "deploymentconfig" | grep User-Agent' "openshift/${os_git_regex} .* openshift/"
 echo "version reporting: ok"
+os::test::junit::declare_suite_end
+
+os::test::junit::declare_suite_start "cmd/basicresources/status"
+os::cmd::expect_success_and_text 'openshift cli status -h' 'openshift cli describe buildConfig'
+os::cmd::expect_success_and_text 'oc status -h' 'oc describe buildConfig'
+os::cmd::expect_success_and_text 'oc status' 'oc new-app'
+os::cmd::expect_success_and_text 'openshift cli status' 'openshift cli new-app'
+echo "status help output: ok"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "cmd/basicresources/explain"
@@ -101,6 +118,8 @@ os::cmd::try_until_success 'oc label pod/hello-openshift acustom=label' # can ra
 os::cmd::expect_success_and_text 'oc describe pod/hello-openshift' 'acustom=label'
 os::cmd::try_until_success 'oc annotate pod/hello-openshift foo=bar' # can race against scheduling and status updates
 os::cmd::expect_success_and_text 'oc get -o yaml pod/hello-openshift' 'foo: bar'
+os::cmd::expect_failure_and_not_text 'oc annotate pod hello-openshift description="test" --resource-version=123' 'may only be used with a single resource'
+os::cmd::expect_failure_and_text 'oc annotate pod hello-openshift hello-openshift description="test" --resource-version=123' 'may only be used with a single resource'
 os::cmd::expect_success 'oc delete pods -l acustom=label --grace-period=0'
 os::cmd::expect_failure 'oc get pod/hello-openshift'
 echo "label: ok"
@@ -119,8 +138,8 @@ os::cmd::expect_success 'oc get      -f test/testdata/mixed-api-versions.yaml -o
 os::cmd::expect_success 'oc label    -f test/testdata/mixed-api-versions.yaml mylabel=a'
 os::cmd::expect_success 'oc annotate -f test/testdata/mixed-api-versions.yaml myannotation=b'
 # Make sure all six resources, with different API versions, got labeled and annotated
-os::cmd::expect_success_and_text 'oc get -f test/testdata/mixed-api-versions.yaml --output-version=v1 --output=jsonpath="{..metadata.labels.mylabel}"'           '^a a a a a a$'
-os::cmd::expect_success_and_text 'oc get -f test/testdata/mixed-api-versions.yaml --output-version=v1 --output=jsonpath="{..metadata.annotations.myannotation}"' '^b b b b b b$'
+os::cmd::expect_success_and_text 'oc get -f test/testdata/mixed-api-versions.yaml --output-version=v1 --output=jsonpath="{..metadata.labels.mylabel}"'           '^a a a a a$'
+os::cmd::expect_success_and_text 'oc get -f test/testdata/mixed-api-versions.yaml --output-version=v1 --output=jsonpath="{..metadata.annotations.myannotation}"' '^b b b b b$'
 os::cmd::expect_success 'oc delete   -f test/testdata/mixed-api-versions.yaml'
 echo "list version conversion: ok"
 os::test::junit::declare_suite_end
@@ -131,7 +150,7 @@ os::cmd::expect_success 'oc get nodes'
   # subshell so we can unset kubeconfig
   cfg="${KUBECONFIG}"
   unset KUBECONFIG
-  os::cmd::expect_success 'kubectl get nodes --kubeconfig="${cfg}"'
+  os::cmd::expect_success "kubectl get nodes --kubeconfig='${cfg}'"
 )
 echo "nodes: ok"
 os::test::junit::declare_suite_end
@@ -140,7 +159,7 @@ os::test::junit::declare_suite_end
 os::test::junit::declare_suite_start "cmd/basicresources/create"
 os::cmd::expect_success 'oc create dc my-nginx --image=nginx'
 os::cmd::expect_success 'oc delete dc my-nginx'
-os::cmd::expect_success 'oc create clusterquota limit-bob --project-selector=openshift.io/requester=user-bob --hard=pods=10'
+os::cmd::expect_success 'oc create clusterquota limit-bob --project-label-selector=openshift.io/requester=user-bob --hard=pods=10'
 os::cmd::expect_success 'oc delete clusterquota/limit-bob'
 echo "create subcommands: ok"
 os::test::junit::declare_suite_end
@@ -159,6 +178,9 @@ os::cmd::expect_success 'oc create route edge test-route --service=frontend'
 os::cmd::expect_success 'oc delete routes test-route'
 os::cmd::expect_failure 'oc create route edge new-route'
 os::cmd::expect_success 'oc delete services frontend'
+os::cmd::expect_success 'oc create route edge --insecure-policy=Allow --service=foo --port=80'
+os::cmd::expect_success_and_text 'oc get route foo -o jsonpath="{.spec.tls.insecureEdgeTerminationPolicy}"' 'Allow'
+os::cmd::expect_success 'oc delete routes foo'
 echo "routes: ok"
 os::test::junit::declare_suite_end
 
@@ -258,6 +280,15 @@ os::cmd::expect_success_and_text "oc get route route-with-set-port --template='{
 echo "expose: ok"
 os::test::junit::declare_suite_end
 
+# Test that resource printer includes resource kind on multiple resources
+os::test::junit::declare_suite_start "cmd/basicresources/get"
+os::cmd::expect_success 'oc create imagestream test1'
+os::cmd::expect_success 'oc new-app node'
+os::cmd::expect_success_and_text 'oc get all' 'is/test1'
+os::cmd::expect_success_and_not_text 'oc get is' 'is/test1'
+echo "resource printer: ok"
+os::test::junit::declare_suite_end
+
 # Test OAuth access token describer
 os::cmd::expect_success 'oc create -f test/testdata/oauthaccesstoken.yaml'
 os::cmd::expect_success_and_text "oc describe oauthaccesstoken DYGZDLucARCPIfUeKPhsgPfn0WBLR_9KdeREH0c9iod" "DYGZDLucARCPIfUeKPhsgPfn0WBLR_9KdeREH0c9iod"
@@ -267,13 +298,12 @@ os::cmd::expect_success 'oc delete all --all'
 
 os::test::junit::declare_suite_start "cmd/basicresources/projectadmin"
 # switch to test user to be sure that default project admin policy works properly
-new="$(mktemp -d)/tempconfig"
-os::cmd::expect_success "oc config view --raw > $new"
-export KUBECONFIG=$new
-project=$(oc project -q)
+temp_config="$(mktemp -d)/tempconfig"
+os::cmd::expect_success "oc config view --raw > '${temp_config}'"
+export KUBECONFIG="${temp_config}"
 os::cmd::expect_success 'oc policy add-role-to-user admin test-user'
 os::cmd::expect_success 'oc login -u test-user -p anything'
-os::cmd::try_until_success 'oc project ${project}'
+os::cmd::try_until_success "oc project '$(oc project -q)'"
 
 os::cmd::expect_success 'oc run --image=openshift/hello-openshift test'
 os::cmd::expect_success 'oc run --image=openshift/hello-openshift --generator=run-controller/v1 test2'
@@ -309,7 +339,7 @@ echo "delete all: ok"
 os::test::junit::declare_suite_end
 
 # service accounts should not be allowed to request new projects
-os::cmd::expect_failure_and_text "oc new-project --token="$( oc sa get-token builder )" will-fail" 'Error from server: You may not request a new project via this API'
+os::cmd::expect_failure_and_text "oc new-project --token='$( oc sa get-token builder )' will-fail" 'Error from server: You may not request a new project via this API'
 
 # test oc projects
 os::cmd::expect_failure_and_text 'oc projects test_arg' 'no arguments'
@@ -324,9 +354,7 @@ echo 'projects command ok'
 
 os::test::junit::declare_suite_start "cmd/basicresources/patch"
 # Validate patching works correctly
-oc login -u system:admin
-# Clean up group if needed to be re-entrant
-oc delete group patch-group || true
+os::cmd::expect_success 'oc login -u system:admin'
 group_json='{"kind":"Group","apiVersion":"v1","metadata":{"name":"patch-group"}}'
 os::cmd::expect_success          "echo '${group_json}' | oc create -f -"
 os::cmd::expect_success_and_text 'oc get group patch-group -o yaml' 'users: null'

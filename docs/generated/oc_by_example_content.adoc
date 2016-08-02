@@ -179,6 +179,37 @@ Displays merged kubeconfig settings or a specified kubeconfig file.
 ====
 
 
+== oc adm cordon
+Mark node as unschedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as unschedulable.
+oc adm cordon foo
+
+----
+====
+
+
+== oc adm drain
+Drain node in preparation for maintenance
+
+====
+
+[options="nowrap"]
+----
+# Drain node "foo", even if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet on it.
+$ oc adm drain foo --force
+
+# As above, but abort if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet, and use a grace period of 15 minutes.
+$ oc adm drain foo --grace-period=900
+
+----
+====
+
+
 == oc adm groups add-users
 Add users to a group
 
@@ -318,6 +349,54 @@ Manage nodes - list pods, evacuate, or mark ready
 
 	# List all pods on given nodes
 	oc adm manage-node <mynode1> <mynode2> --list-pods
+----
+====
+
+
+== oc adm migrate image-references
+Update embedded Docker image references
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of migrating all "docker.io" references to "myregistry.com"
+  oc adm migrate image-references docker.io/*=myregistry.com/*
+
+  # To actually perform the migration, the confirm flag must be appended
+  oc adm migrate image-references docker.io/*=myregistry.com/* --confirm
+
+  # To see more details of what will be migrated, use the loglevel and output flags
+  oc adm migrate image-references docker.io/*=myregistry.com/* --loglevel=2 -o yaml
+
+  # Migrate from a service IP to an internal service DNS name
+  oc adm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/*
+
+  # Migrate from a service IP to an internal service DNS name for all deployment configs and builds
+  oc adm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/* --include=buildconfigs,deploymentconfigs
+----
+====
+
+
+== oc adm migrate storage
+Update the stored version of API objects
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of updating all objects
+  oc adm migrate storage
+
+  # To actually perform the update, the confirm flag must be appended
+  oc adm migrate storage --confirm
+
+  # Only migrate pods
+  oc adm migrate storage --include=pods --confirm
+
+  # Only pods that are in namespaces starting with "bar"
+  oc adm migrate storage --include=pods --confirm --from-key=bar/ --to-key=bar/\xFF
+
 ----
 ====
 
@@ -523,6 +602,13 @@ Remove unreferenced images
 
   # To actually perform the prune operation, the confirm flag must be appended
   oc adm prune images --keep-tag-revisions=3 --keep-younger-than=60m --confirm
+
+  # See, what the prune command would delete if we're interested in removing images
+  # exceeding currently set LimitRanges ('openshift.io/Image')
+  oc adm prune images --prune-over-size-limit
+
+  # To actually perform the prune operation, the confirm flag must be appended
+  oc adm prune images --prune-over-size-limit --confirm
 ----
 ====
 
@@ -574,6 +660,36 @@ Install a router
   # Run the router with a hint to the underlying implementation to _not_ expose statistics.
   oc adm router router-west --stats-port=0
   
+----
+====
+
+
+== oc adm taint
+Update the taints on one or more nodes
+
+====
+
+[options="nowrap"]
+----
+# Update node 'foo' with a taint with key 'dedicated' and value 'special-user' and effect 'NoSchedule'.
+# If a taint with that key already exists, its value and effect are replaced as specified.
+oc adm taint nodes foo dedicated=special-user:NoSchedule
+# Remove from node 'foo' the taint with key 'dedicated' if one exists.
+oc adm taint nodes foo dedicated-
+----
+====
+
+
+== oc adm uncordon
+Mark node as schedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as schedulable.
+$ oc adm uncordon foo
+
 ----
 ====
 
@@ -854,15 +970,15 @@ Convert config files between different API versions
 
 [options="nowrap"]
 ----
-# Convert 'pod.yaml' to latest version and print to stdout.
-oc convert -f pod.yaml
+  # Convert 'pod.yaml' to latest version and print to stdout.
+  oc convert -f pod.yaml
 
-# Convert the live state of the resource specified by 'pod.yaml' to the latest version
-# and print to stdout in json format.
-oc convert -f pod.yaml --local -o json
+  # Convert the live state of the resource specified by 'pod.yaml' to the latest version
+  # and print to stdout in json format.
+  oc convert -f pod.yaml --local -o json
 
-# Convert all files under current directory to latest version and create them all.
-oc convert -f . | kubectl create -f -
+  # Convert all files under current directory to latest version and create them all.
+  oc convert -f . | oc create -f -
 
 ----
 ====
@@ -892,7 +1008,7 @@ Create cluster resource quota resource.
 [options="nowrap"]
 ----
   # Create an cluster resource quota limited to 10 pods
-  oc create clusterresourcequota limit-bob --project-selector=openshift.io/requester=user-bob --hard=pods=10
+  oc create clusterresourcequota limit-bob --project-label-selector=openshift.io/requester=user-bob --hard=pods=10
 ----
 ====
 
@@ -981,6 +1097,22 @@ Create a policy binding that references the policy in the targetted namespace.
 ====
 
 
+== oc create quota
+Create a quota with the specified name.
+
+====
+
+[options="nowrap"]
+----
+  // Create a new resourcequota named my-quota
+  $ oc create quota my-quota --hard=cpu=1,memory=1G,pods=2,services=3,replicationcontrollers=2,resourcequotas=1,secrets=5,persistentvolumeclaims=10
+  
+  // Create a new resourcequota named best-effort
+  $ oc create quota best-effort --hard=pods=100 --scopes=BestEffort
+----
+====
+
+
 == oc create route edge
 Create a route that uses edge TLS termination
 
@@ -1040,7 +1172,7 @@ Create a secret for use with a Docker registry.
 [options="nowrap"]
 ----
   # If you don't already have a .dockercfg file, you can create a dockercfg secret directly by using:
-  $ oc create secret docker-registry my-secret --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
+  oc create secret docker-registry my-secret --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
 ----
 ====
 
@@ -1060,6 +1192,19 @@ Create a secret from a local file, directory or literal value.
   
   # Create a new secret named my-secret with key1=supersecret and key2=topsecret
   oc create secret generic my-secret --from-literal=key1=supersecret --from-literal=key2=topsecret
+----
+====
+
+
+== oc create secret tls
+Create a TLS secret.
+
+====
+
+[options="nowrap"]
+----
+  # Create a new TLS secret named tls-secret with the given key pair:
+  oc create secret tls tls-secret --cert=path/to/tls.cert --key=path/to/tls.key
 ----
 ====
 
@@ -1142,8 +1287,8 @@ Delete one or more resources
   # Delete pods and services with label name=myLabel.
   oc delete pods,services -l name=myLabel
 
-  # Delete a pod with ID 1234-56-7890-234234-456456.
-  oc delete pod 1234-56-7890-234234-456456
+  # Delete a pod with name node-1-vsjnm.
+  oc delete pod node-1-vsjnm
 
   # Delete all resources associated with a running app, includes
   # buildconfig,deploymentconfig,service,imagestream,route and pod,
@@ -1168,6 +1313,9 @@ View, start, cancel, or retry a deployment
 
   # Start a new deployment based on the 'database'
   oc deploy database --latest
+
+  # Start a new deployment and follow its log
+  oc deploy database --latest --follow
 
   # Retry the latest failed deployment based on 'frontend'
   # The deployer pod and any hook pods are deleted for the latest failed deployment
@@ -1211,8 +1359,8 @@ Edit a resource on the server
   # Use an alternative editor
   OC_EDITOR="nano" oc edit dc/my-deployment
 
-  # Edit the service 'docker-registry' in JSON using the v1beta3 API format:
-  oc edit svc/docker-registry --output-version=v1beta3 -o json
+  # Edit the service 'docker-registry' in JSON using the v1 API format:
+  oc edit svc/docker-registry --output-version=v1 -o json
 ----
 ====
 
@@ -1267,6 +1415,9 @@ Perform a direct Docker build
 ----
   # Build the current directory into a single layer and tag
   oc ex dockerbuild . myimage:latest
+
+  # Mount a client secret into the build at a certain path
+  oc ex dockerbuild . myimage:latest --mount ~/mysecret.pem:/etc/pki/secret/mysecret.pem
 ----
 ====
 
@@ -1318,9 +1469,6 @@ Export resources so they can be used elsewhere
 
   # export to JSON
   oc export service -o json
-
-  # convert a file on disk to the latest API version (in YAML, the default)
-  oc export -f a_v1beta3_service.json --output-version=v1 --exact
 ----
 ====
 
@@ -1346,6 +1494,25 @@ Expose a replicated application as a service or route
 
   # Expose a service as a route in the specified path
   oc expose service nginx --path=/nginx
+----
+====
+
+
+== oc extract
+Extract secrets or config maps to disk
+
+====
+
+[options="nowrap"]
+----
+  # extract the secret "test" to the current directory
+  oc extract secret/test
+
+  # extract the config map "nginx" to the /tmp directory
+  oc extract configmap/nginx --to=/tmp
+
+  # extract only the key "nginx.conf" from config map "nginx" to the /tmp directory
+  oc extract configmap/nginx --to=/tmp --keys=nginx.conf
 ----
 ====
 
@@ -1925,20 +2092,39 @@ Change the number of pods in a deployment
 
 
 == oc secrets add
-Add secrets to a ServiceAccount
+DEPRECATED: secrets link
 
 ====
 
 [options="nowrap"]
 ----
-  // To use your secret inside of a pod or as a push, pull, or source secret for a build, you must add a 'mount' secret to your service account like this:
-  oc secrets add serviceaccount/sa-name secrets/secret-name secrets/another-secret-name
+  # Add an image pull secret to a service account to automatically use it for pulling pod images:
+  oc serviceaccount-name pull-secret --for=pull
 
-  // To use your secret as an image pull secret, you must add a 'pull' secret to your service account like this:
-  oc secrets add serviceaccount/sa-name secrets/secret-name --for=pull
+  # Add an image pull secret to a service account to automatically use it for both pulling and pushing build images:
+  oc builder builder-image-secret --for=pull,mount
 
-  // To use your secret for image pulls or inside a pod:
-  oc secrets add serviceaccount/sa-name secrets/secret-name --for=pull,mount
+  # If the cluster's serviceAccountConfig is operating with limitSecretReferences: True, secrets must be added to the pod's service account whitelist in order to be available to the pod:
+  oc pod-sa pod-secret
+----
+====
+
+
+== oc secrets link
+Link secrets to a ServiceAccount
+
+====
+
+[options="nowrap"]
+----
+  # Add an image pull secret to a service account to automatically use it for pulling pod images:
+  oc secrets link serviceaccount-name pull-secret --for=pull
+
+  # Add an image pull secret to a service account to automatically use it for both pulling and pushing build images:
+  oc secrets link builder builder-image-secret --for=pull,mount
+
+  # If the cluster's serviceAccountConfig is operating with limitSecretReferences: True, secrets must be added to the pod's service account whitelist in order to be available to the pod:
+  oc secrets link pod-sa pod-secret
 ----
 ====
 
@@ -2028,6 +2214,19 @@ Create a new secret for SSH authentication
 ====
 
 
+== oc secrets unlink
+Detach secrets from a ServiceAccount
+
+====
+
+[options="nowrap"]
+----
+ # Unlink a secret currently associated with a service account:
+oc secrets unlink serviceaccount-name secret-name another-secret-name ...
+----
+====
+
+
 == oc serviceaccounts get-token
 Get a token assigned to a service account.
 
@@ -2052,7 +2251,7 @@ Generate a new token for a service account.
   # Generate a new token for service account 'default'
   oc serviceaccounts new-token 'default'
 
-  # Generate a new token for service account 'default' and apply 
+  # Generate a new token for service account 'default' and apply
   # labels 'foo' and 'bar' to the new token for identification
   # oc serviceaccounts new-token 'default' --labels foo=foo-value,bar=bar-value
 

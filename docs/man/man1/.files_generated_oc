@@ -16,6 +16,7 @@ oc-adm-config-unset.1
 oc-adm-config-use-context.1
 oc-adm-config-view.1
 oc-adm-config.1
+oc-adm-cordon.1
 oc-adm-create-api-client-config.1
 oc-adm-create-bootstrap-policy-file.1
 oc-adm-create-bootstrap-project-template.1
@@ -29,6 +30,7 @@ oc-adm-create-provider-selection-template.1
 oc-adm-create-server-cert.1
 oc-adm-create-signer-cert.1
 oc-adm-diagnostics.1
+oc-adm-drain.1
 oc-adm-groups-add-users.1
 oc-adm-groups-new.1
 oc-adm-groups-prune.1
@@ -37,6 +39,9 @@ oc-adm-groups-sync.1
 oc-adm-groups.1
 oc-adm-ipfailover.1
 oc-adm-manage-node.1
+oc-adm-migrate-image-references.1
+oc-adm-migrate-storage.1
+oc-adm-migrate.1
 oc-adm-new-project.1
 oc-adm-options.1
 oc-adm-overwrite-policy.1
@@ -69,6 +74,8 @@ oc-adm-prune-images.1
 oc-adm-prune.1
 oc-adm-registry.1
 oc-adm-router.1
+oc-adm-taint.1
+oc-adm-uncordon.1
 oc-adm.1
 oc-annotate.1
 oc-apply.1
@@ -97,12 +104,14 @@ oc-create-identity.1
 oc-create-imagestream.1
 oc-create-namespace.1
 oc-create-policybinding.1
+oc-create-quota.1
 oc-create-route-edge.1
 oc-create-route-passthrough.1
 oc-create-route-reencrypt.1
 oc-create-route.1
 oc-create-secret-docker-registry.1
 oc-create-secret-generic.1
+oc-create-secret-tls.1
 oc-create-secret.1
 oc-create-serviceaccount.1
 oc-create-user.1
@@ -120,6 +129,7 @@ oc-exec.1
 oc-explain.1
 oc-export.1
 oc-expose.1
+oc-extract.1
 oc-get.1
 oc-import-app.json.1
 oc-import-docker-compose.1
@@ -160,10 +170,12 @@ oc-rsync.1
 oc-run.1
 oc-scale.1
 oc-secrets-add.1
+oc-secrets-link.1
 oc-secrets-new-basicauth.1
 oc-secrets-new-dockercfg.1
 oc-secrets-new-sshauth.1
 oc-secrets-new.1
+oc-secrets-unlink.1
 oc-secrets.1
 oc-serviceaccounts-get-token.1
 oc-serviceaccounts-new-token.1

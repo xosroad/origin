@@ -49,7 +49,7 @@ desired replicas in the configuration template.
 
 .PP
 \fB\-R\fP, \fB\-\-recursive\fP=false
-    If true, process directory recursively.
+    Process the directory used in \-f, \-\-filename recursively. Useful when you want to manage related manifests organized within the same directory.
 
 .PP
 \fB\-\-replicas\fP=\-1
@@ -61,7 +61,7 @@ desired replicas in the configuration template.
 
 .PP
 \fB\-\-timeout\fP=0
-    The length of time to wait before giving up on a scale operation, zero means don't wait.
+    The length of time to wait before giving up on a scale operation, zero means don't wait. Any other values should contain a corresponding time unit (e.g. 1s, 2m, 3h).
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS

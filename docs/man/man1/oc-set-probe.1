@@ -28,9 +28,12 @@ Setting both liveness and readiness probes for each container is highly recommen
 The three probe types are:
 .IP \(bu 2
 
-\item Open a TCP socket on the pod IP
-\item Perform an HTTP GET against a URL on a container that must return 200 OK
-\item Run a command in the container that must return exit code 0
+.IP
+\(bu Open a TCP socket on the pod IP
+.IP
+\(bu Perform an HTTP GET against a URL on a container that must return 200 OK
+.IP
+\(bu Run a command in the container that must return exit code 0
 .PP
 Containers that take a variable amount of time to start should set generous
 initial\-delay\-seconds values, otherwise as your application evolves you may suddenly begin
@@ -78,7 +81,7 @@ to fail.
 \fB\-o\fP, \fB\-\-output\fP=""
     Output format. One of: json|yaml|wide|name|go\-template=...|go\-template\-file=...|jsonpath=...|jsonpath\-file=... See golang template [
 \[la]http://golang.org/pkg/text/template/#pkg-overview\[ra]] and jsonpath template [
-\[la]http://releases.k8s.io/HEAD/docs/user-guide/jsonpath.md\[ra]].
+\[la]http://releases.k8s.io/release-1.3/docs/user-guide/jsonpath.md\[ra]].
 
 .PP
 \fB\-\-output\-version\fP=""

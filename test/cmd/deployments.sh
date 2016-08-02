@@ -52,7 +52,7 @@ os::cmd::expect_success_and_text 'oc env dc/test-deployment-config OTHER=foo -o 
 os::cmd::expect_success_and_text 'echo OTHER=foo | oc env dc/test-deployment-config -e - --list' 'OTHER=foo'
 os::cmd::expect_success_and_not_text 'echo #OTHER=foo | oc env dc/test-deployment-config -e - --list' 'OTHER=foo'
 os::cmd::expect_success 'oc env dc/test-deployment-config TEST=bar OTHER=baz BAR-'
-os::cmd::expect_success_and_not_text 'oc env -f test/integration/testdata/test-deployment-config.yaml TEST=VERSION -o yaml' 'v1beta3'
+os::cmd::expect_success_and_text 'oc env -f test/integration/testdata/test-deployment-config.yaml TEST=VERSION -o yaml' 'v1'
 os::cmd::expect_success 'oc env dc/test-deployment-config A=a B=b C=c D=d E=e F=f G=g'
 os::cmd::expect_success_and_text 'oc env dc/test-deployment-config --list' 'A=a'
 os::cmd::expect_success_and_text 'oc env dc/test-deployment-config --list' 'B=b'
@@ -93,6 +93,8 @@ os::cmd::expect_success_and_text "oc get dc --show-labels" "app=dockerbuild,temp
 os::cmd::expect_success_and_text "oc get dc frontend --show-labels" "app=dockerbuild,template=application-template-dockerbuild"
 os::cmd::expect_success_and_not_text "oc get dc" "app=dockerbuild,template=application-template-dockerbuild"
 os::cmd::expect_success_and_not_text "oc get dc frontend" "app=dockerbuild,template=application-template-dockerbuild"
+os::cmd::expect_success "oc process -f test/testdata/old-template.json | oc create -f -"
+os::cmd::expect_success_and_text "oc get dc/eap-app -o yaml" ":latest"
 echo "get: ok"
 os::test::junit::declare_suite_end
 

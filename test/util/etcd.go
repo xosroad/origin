@@ -3,9 +3,12 @@ package util
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
+	goruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/coreos/pkg/capnslog"
@@ -81,4 +84,31 @@ func withEtcdKey(f func(string)) {
 	prefix := fmt.Sprintf("/test-%d", rand.Int63())
 	defer NewEtcdClient().Delete(prefix, true)
 	f(prefix)
+}
+
+func DumpEtcdOnFailure(t *testing.T) {
+	if !t.Failed() {
+		return
+	}
+
+	pc := make([]uintptr, 10)
+	goruntime.Callers(2, pc)
+	f := goruntime.FuncForPC(pc[0])
+	last := strings.LastIndex(f.Name(), "Test")
+	if last == -1 {
+		last = 0
+	}
+	name := f.Name()[last:]
+
+	client := NewEtcdClient()
+	etcdResponse, err := client.RawGet("/", false, true)
+	if err != nil {
+		t.Logf("error dumping etcd: %v", err)
+		return
+	}
+
+	if err := ioutil.WriteFile(GetBaseDir()+"/etcd-dump-"+name+".json", etcdResponse.Body, os.FileMode(0444)); err != nil {
+		t.Logf("error dumping etcd: %v", err)
+		return
+	}
 }

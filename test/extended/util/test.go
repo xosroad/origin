@@ -81,7 +81,7 @@ func InitTest() {
 	TestContext.CreateTestingNS = createTestingNS
 
 	// Override the default Kubernetes E2E configuration
-	e2e.SetTestContext(TestContext)
+	e2e.TestContext = TestContext
 }
 
 func ExecuteTest(t *testing.T, suite string) {
@@ -174,7 +174,7 @@ func createTestingNS(baseName string, c *kclient.Client, labels map[string]strin
 
 		// The intra-pod test requires that the service account have
 		// permission to retrieve service endpoints.
-		osClient, _, err := configapi.GetOpenShiftClient(KubeConfigPath())
+		osClient, _, err := configapi.GetOpenShiftClient(KubeConfigPath(), nil)
 		if err != nil {
 			return ns, err
 		}
